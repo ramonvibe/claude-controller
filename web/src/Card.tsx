@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { MODEL_LABELS, ROLE_LABELS, fmtTokens, fmtUsd } from './api.ts';
 import type { CardStatus } from './status.ts';
 import { tierTag } from './Providers.tsx';
+import { SkillPicker, type SkillInfo } from './Skills.tsx';
 
 export type UsageRow = { agentId: string; model: string; input: number; output: number; cacheRead: number; cacheCreate: number; costUsd: number | null; priced: number };
 
@@ -12,6 +13,8 @@ type Props = {
   providers: { id: string; label: string; models: string[]; tier?: string | null; modelTiers?: Record<string, string> }[];
   mcps: { id: string; label: string; kind: string; providers: string[]; available: boolean; schemaTokens: number | null }[];
   status: CardStatus;
+  skills: SkillInfo[];
+  defaultSkills: string[];
   activity?: string;
   usage: UsageRow[];
   canRun: boolean;
@@ -21,7 +24,7 @@ type Props = {
   onCancel: () => void;
 };
 
-export function Card({ agent, providers, mcps, status, activity, usage, canRun, onSave, onDelete, onRun, onCancel }: Props) {
+export function Card({ agent, providers, mcps, status, skills, defaultSkills, activity, usage, canRun, onSave, onDelete, onRun, onCancel }: Props) {
   const [name, setName] = useState(agent.name);
   const save = (patch: object) => onSave({ ...agent, ...patch });
   const tokens = usage.reduce((s, u) => s + u.input + u.output + u.cacheRead + u.cacheCreate, 0);
@@ -101,6 +104,15 @@ export function Card({ agent, providers, mcps, status, activity, usage, canRun, 
           Herdar minha config
         </label>
       )}
+
+      <details className="card-skills">
+        <summary>Skills: {agent.skills === null ? `padrão (${defaultSkills.length})` : `próprias (${agent.skills.length})`}</summary>
+        <label className="check">
+          <input type="checkbox" checked={agent.skills === null} onChange={(e) => save({ skills: e.target.checked ? null : [...defaultSkills] })} />
+          Usar as skills padrão
+        </label>
+        {agent.skills !== null && <SkillPicker all={skills} value={agent.skills} onChange={(ids) => save({ skills: ids })} />}
+      </details>
 
       <p className="activity" aria-live="polite">{activity ?? '—'}</p>
 

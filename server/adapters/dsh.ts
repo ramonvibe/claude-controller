@@ -31,7 +31,7 @@ export function mapDshEvent(o: any, model: string): AdapterEvent[] {
   // Usage arrives on status/step_end (fixtures/dsh/ok-account.ndjson).
   const u = o?.usage;
   if (typeof u?.inputTokens === 'number' || typeof u?.outputTokens === 'number')
-    out.push({ kind: 'usage', model, input: u.inputTokens ?? 0, output: u.outputTokens ?? 0, cacheRead: u.cacheReadTokens ?? 0, cacheCreate: u.cacheWriteTokens ?? 0, costUsd: null, source: 'dsh-events' });
+    out.push({ kind: 'usage', model, input: u.inputTokens ?? 0, output: u.outputTokens ?? 0, cacheRead: u.cacheReadTokens ?? 0, cacheCreate: u.cacheWriteTokens ?? 0, costUsd: 0, source: 'dsh-events' // account route is free });
   switch (o?.type) {
     case 'session':
       out.push({ kind: 'status', text: `sessão ${o.sessionId}` });

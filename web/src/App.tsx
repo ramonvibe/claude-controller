@@ -7,6 +7,7 @@ import { Diagnostics } from './Diagnostics.tsx';
 import { Routing } from './Routing.tsx';
 import { Providers } from './Providers.tsx';
 import { Connectors } from './Connectors.tsx';
+import { DefaultSkills, type SkillInfo } from './Skills.tsx';
 
 type Snapshot = {
   agents: any[];
@@ -30,11 +31,13 @@ export function App() {
   const [err, setErr] = useState('');
   const [view, setView] = useState<'main' | 'diag' | 'providers'>('main');
   const [runsTick, setRunsTick] = useState(0);
+  const [skills, setSkills] = useState<SkillInfo[]>([]);
   const refresh = useRef<() => void>(() => {});
 
   refresh.current = async () => {
-    const [s, mcps] = await Promise.all([api<Snapshot>('GET', '/api/state'), api('GET', '/api/mcps')]);
+    const [s, mcps, skills] = await Promise.all([api<Snapshot>('GET', '/api/state'), api('GET', '/api/mcps'), api<SkillInfo[]>('GET', '/api/skills')]);
     setSnap({ ...s, mcps });
+    setSkills(skills);
     setStatus(fromSnapshot(s.live));
     setUsage(s.usage);
   };
@@ -144,6 +147,7 @@ export function App() {
         </label>
       </section>
 
+      <DefaultSkills all={skills} value={settings.skills} onChange={(ids) => saveSettings({ skills: ids })} />
       <Routing routing={settings.routing} agents={snap.agents.filter((a) => a.enabled)} onChange={(routing) => saveSettings({ routing })} />
 
       <section className="prompt" aria-label="Pedido">
@@ -162,6 +166,8 @@ export function App() {
               agent={a}
               providers={snap.providers}
               mcps={snap.mcps ?? []}
+              skills={skills}
+              defaultSkills={settings.skills}
               status={cardStatus(status, a.id)}
               activity={activity[a.id]}
               usage={byAgent[a.id] ?? []}

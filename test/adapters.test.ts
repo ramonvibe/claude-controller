@@ -46,7 +46,7 @@ test('dsh: authenticated recorded run gives text, real usage and result', () => 
   const evs = fixture('ok-account').flatMap((o) => mapDshEvent(o, 'deepseek-flash'));
   assert.deepEqual(evs.map((e) => e.kind), ['status', 'delta', 'usage', 'result']);
   const u: any = evs[2];
-  assert.deepEqual([u.input, u.output, u.source, u.costUsd], [5751, 2, 'dsh-events', null]);
+  assert.deepEqual([u.input, u.output, u.source, u.costUsd], [5751, 2, 'dsh-events', 0]);
   assert.equal((evs[3] as any).text, 'ok');
 });
 

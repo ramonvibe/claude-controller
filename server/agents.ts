@@ -13,6 +13,7 @@ export const AgentInput = z.object({
   effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).nullable().default(null),
   tools: z.array(z.string().min(1).max(200)).nullable().default(null),
   mcps: z.array(z.string()).default([]),
+  skills: z.array(z.string().max(300)).max(50).nullable().default(null),
   inheritUserConfig: z.boolean().default(false),
   limits: z
     .object({
@@ -32,7 +33,7 @@ export function parseAgent(body: unknown, id = newId(), providers: Set<string>):
 
 export function seedAgents(store: Store) {
   if (store.agents().length) return;
-  const base = { systemPrompt: null, tools: null, mcps: [], inheritUserConfig: false, enabled: true };
+  const base = { systemPrompt: null, tools: null, mcps: [], skills: null, inheritUserConfig: false, enabled: true };
   const limits = { maxBudgetUsd: null, maxReviewLoops: 2, timeoutSec: 600 };
   const seed: Agent[] = [
     { id: newId(), name: 'Planejador', provider: 'claude-cli', model: 'opus', role: 'planner', effort: 'medium', limits, ...base },

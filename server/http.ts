@@ -11,6 +11,7 @@ import { newId } from './engine.ts';
 import { parseAgent } from './agents.ts';
 import { CATEGORIES } from './types.ts';
 import { CLI_TIERS } from './catalog.ts';
+import { listSkills } from './skills.ts';
 
 export type Ctx = { store: Store; engine: Engine; token: string; staticDir: string; extraRoutes?: Route[] };
 export type Route = [method: string, path: RegExp, handler: (req: Req) => Promise<unknown> | unknown];
@@ -110,6 +111,7 @@ export function createApp(ctx: Ctx) {
     ['POST', /^\/api\/tasks\/([\w-]+)\/cancel$/, ({ params }) => ({ cancelled: engine.cancel(params[0]) })],
     ['GET', /^\/api\/runs$/, () => store.runs()],
     ['GET', /^\/api\/runs\/([\w-]+)$/, ({ params }) => store.run(params[0]) ?? Promise.reject(httpError(404, 'run não encontrado'))],
+    ['GET', /^\/api\/skills$/, () => listSkills(store.settings().workspace).map(({ body, ...s }) => s)],
     ['GET', /^\/api\/diagnostics$/, ({ query }) => engine.diagnostics(query.has('refresh'))],
     ['GET', /^\/api\/tasks\/([\w-]+)\/events$/, ({ params }) =>
       store.db.prepare('select * from events where task_id=? order by id').all(params[0])],

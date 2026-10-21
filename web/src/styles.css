@@ -158,3 +158,10 @@ label.check input { width: auto; }
 .models { max-height: 320px; overflow: auto; display: flex; flex-direction: column; gap: 3px; border: 1px solid var(--border); border-radius: 6px; padding: 6px; }
 .connectors { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }
 @media (max-width: 700px) { .draft .row { grid-template-columns: 1fr; } }
+.skills-head { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.skills-head .meter { white-space: nowrap; }
+.skills-list { max-height: 240px; overflow: auto; display: flex; flex-direction: column; gap: 3px; border: 1px solid var(--border); border-radius: 6px; padding: 6px; font-size: 12px; }
+details.routing summary { cursor: pointer; list-style: none; }
+details.routing summary h2 { display: inline; }
+.card-skills summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.card-skills .skills-list { max-height: 160px; }

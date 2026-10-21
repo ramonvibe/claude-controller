@@ -11,6 +11,7 @@ export type Agent = {
   effort: string | null;
   tools: string[] | null; // permission rules; null = role default
   mcps: string[]; // McpPreset ids
+  skills: string[] | null; // null = default skills from Settings
   inheritUserConfig: boolean;
   limits: { maxBudgetUsd: number | null; maxReviewLoops: number; timeoutSec: number };
   enabled: boolean;

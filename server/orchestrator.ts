@@ -217,7 +217,7 @@ async function measure(orch: Orchestrator, id: string) {
   if (missing.length) throw httpError(400, 'MCP indisponível: variável de ambiente ausente');
   const agent: Agent = {
     id: 'measure', name: 'measure', provider: 'claude-cli', model: 'haiku', role: 'custom', systemPrompt: null, effort: 'low',
-    tools: null, mcps: [], inheritUserConfig: false, enabled: true, limits: { maxBudgetUsd: null, maxReviewLoops: 0, timeoutSec: 180 },
+    tools: null, mcps: [], skills: [], inheritUserConfig: false, enabled: true, limits: { maxBudgetUsd: null, maxReviewLoops: 0, timeoutSec: 180 },
   };
   const cfg = Object.keys(servers).length ? writeMcpConfig(join(orch.engine.dataDir, 'mcp'), `measure-${id}`, servers) : null;
   const ctx = async (withPreset: boolean) => {

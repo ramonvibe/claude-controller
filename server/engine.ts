@@ -5,6 +5,7 @@ import { commandsNote, roleRules, TEMPLATES } from './roles.ts';
 import { estimateTokens } from './handoff.ts';
 import { join } from 'node:path';
 import { resolveMcps, writeMcpConfig, type McpServerSpec } from './mcps.ts';
+import { listSkills, skillsPrompt } from './skills.ts';
 import type { Adapter, Agent, Role, Usage } from './types.ts';
 
 export type ExecOpts = {
@@ -73,7 +74,10 @@ export class Engine {
       for await (const ev of adapter.run({
         agent: o.agent,
         prompt: o.prompt,
-        systemPrompt: (o.systemPrompt ?? o.agent.systemPrompt ?? TEMPLATES[role]) + commandsNote(settings.testCommands),
+        systemPrompt:
+          (o.systemPrompt ?? o.agent.systemPrompt ?? TEMPLATES[role]) +
+          commandsNote(settings.testCommands) +
+          skillsPrompt(o.agent.skills ?? settings.skills, listSkills(settings.workspace)),
         rules,
         cwd: this.workspace(),
         schema: adapter.supportsSchema ? o.schema : undefined,

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 const live = process.env.LIVE === '1';
@@ -104,6 +104,28 @@ test('live: measure schema tokens of the web-fetch allowlist preset', { skip: !l
     const r = await app.api('POST', '/api/mcps/web-fetch/measure');
     console.log('web-fetch schemaTokens', r.schemaTokens);
     assert.ok(r.schemaTokens > 0);
+  } finally {
+    await app.app.close();
+  }
+});
+
+test('live: DeepSeek card (dsh, free) writes a README through the app', { skip: !live, timeout: 400000 }, async () => {
+  process.env.DSH_BIN = 'dsh';
+  const { startApp, collect } = await import('./helpers.ts');
+  const app = await startApp();
+  try {
+    writeFileSync(join(app.ws, 'package.json'), JSON.stringify({ name: 'calc', scripts: { test: 'node --test' } }));
+    writeFileSync(join(app.ws, 'sum.js'), 'export const sum = (a, b) => a + b;\n');
+    const docs = app.store.agents().find((a) => a.provider === 'dsh')!;
+    const c = collect(app.port, (evs) => evs.some((e) => (e.kind === 'result' || e.kind === 'error') && e.agentId === docs.id), 380000);
+    await c.ready;
+    await app.api('POST', '/api/tasks', { agentId: docs.id, prompt: JSON.stringify({ task_id: 'T1', role: 'docs', category: 'docs', goal: 'Create README.md describing this package and the sum function', files: ['README.md'], context: 'sum.js exports sum(a,b)', interfaces: '', steps: ['write README.md'], acceptance: ['README.md exists'], constraints: ['only README.md'], sensitive: false }) });
+    const evs = await c.done;
+    const end = evs.at(-1);
+    console.log(end.kind, JSON.stringify(end.payload).slice(0, 300));
+    console.log(evs.filter((e) => e.kind === 'usage').map((e) => e.payload));
+    assert.equal(end.kind, 'result');
+    assert.ok(existsSync(join(app.ws, 'README.md')));
   } finally {
     await app.app.close();
   }

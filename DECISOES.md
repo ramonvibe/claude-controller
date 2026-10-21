@@ -103,3 +103,40 @@ Registro de fatos verificados e desvios em relação ao PLANO.md. Cada fixture c
 
 - **Causa real:** o perfil headless vem com `deepseek-account`, `credentials` e `authorization` em `disabled: true`, e o plugin de conta depende dos outros dois. O overlay gerado pelo adapter agora religa os três (`disabled: false`). Com isso, o headless usa o mesmo login Google feito no `dsh web`, sem chave de API. Isso substitui a conclusão "não autenticado" da fase 5.
 - **O uso de tokens é real.** Ele chega em `{"type":"status","phase":"step_end","usage":{inputTokens,outputTokens,cacheReadTokens,cacheWriteTokens}}`, e o texto chega em `{"type":"text"}` (`fixtures/dsh/ok-account.ndjson`). Um "ok" custou 5.751 tokens de entrada no DeepSeek, que é o contexto base do próprio dsh.
+
+## Rodada 2: modelos substitutos para economizar o Claude
+
+O objetivo, reafirmado por você: qualquer IA de terceiros, grátis ou paga, deve poder assumir as tarefas menores. O PC é fraco, então não há modelos locais.
+
+- **Roteamento por categoria.** O Opus classifica cada handoff em `architecture`, `feature`, `small-change`, `tests` ou `docs`. A tabela "Quem faz cada tipo de tarefa" na UI define, por categoria, o card e o reserva. Os padrões são:
+
+  | Categoria | Card padrão |
+  |---|---|
+  | `architecture` | Planejador (Opus) |
+  | `feature` | Codificador (Haiku) |
+  | `small-change` | Codificador (Haiku) |
+  | `tests` | Codificador (Haiku) |
+  | `docs` | DeepSeek, com o Haiku de reserva |
+
+  Se a categoria não tem card definido, vale a regra antiga, pelo papel.
+- **O esforço (effort) é configurado por card** para os modelos Claude.
+- **Provedores via API compatível com OpenAI, adicionados à mão** (página Provedores). O catálogo mostra o tipo de cada um:
+  - **(free):** Gemini API (AI Studio), Groq, Cerebras, Mistral e GitHub Models.
+  - **(free/paga por modelo):** OpenRouter. Os modelos `:free` ou com preço 0 aparecem como free.
+  - **(paga):** DeepSeek API, OpenAI, xAI e Together.
+  - **Outro:** qualquer URL compatível com OpenAI.
+- **As chaves ficam só no `.env` do backend** (no `.gitignore`). O arquivo é relido a cada chamada, e a chave nunca passa pelo navegador. A UI mostra apenas se a chave existe.
+- **Loop de ferramentas (`server/toolloop.ts`).** O modelo recebe `read_file`, `list_files`, `search`, `write_file`, `edit_file` e `run_command`, conforme as regras do papel. As mesmas negações dos agentes Claude valem aqui:
+  - fora do workspace, ou por symlink que aponte para fora;
+  - `.env`, `*.pem` e `*.key`;
+  - escrita em `.git`;
+  - comandos fora da allowlist, ou com `; & | $ < >`;
+  - `git commit`/`push` e `rm -r`.
+
+  Um 429 é tentado de novo, até 3 vezes. Modelos do OpenRouter sem suporte a `tools` aparecem marcados como "não edita arquivos".
+- **Conectar (login pelo navegador, com o login do próprio provedor):**
+  - **DeepSeek:** sobe `dsh web --no-open`, abre a página de login numa aba e confere a cada 20 s até o headless conseguir responder.
+  - **Gemini CLI:** usa `GOOGLE_GENAI_USE_GCA=true`, e a própria CLI abre o login do Google. O botão "Instalar" roda `npm i -g @google/gemini-cli@0.65.0`.
+  - **Não verificado na Gemini CLI:** o login pelo botão e o formato de `-o stream-json`. Com `NO_BROWSER` (modo sem navegador), ela recusa o login em modo não interativo. O mapeamento de eventos segue a documentação da CLI e ainda precisa de uma fixture real.
+- **Skills padrão:** o app lê as skills de `~/.claude/skills`, dos plugins (só a versão mais nova de cada) e de `.claude/skills` do workspace. O texto delas entra no prompt de qualquer provedor. As padrão são definidas nas Configurações, e cada card pode usar uma lista própria. A UI mostra o custo em tokens por chamada.
+- **Run real no card DeepSeek** (`dsh`, conta grátis): o modelo escreveu um `README.md` pelo app e devolveu o resultado em JSON. O uso foi real (cerca de 6k tokens por passo, quase tudo `cache_read`) e o custo, US$ 0.
