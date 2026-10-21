@@ -24,7 +24,7 @@ test('pipeline: planner → coder → reviewer per handoff; provider failure fal
   const log = fakeScript([
     { structured: { summary: 'plano', tasks: [h('T1', 'coder'), h('T2', 'docs', ['README.md'])] } },
     done('T1'), done('T1'), // coder, reviewer
-    done('T2'), done('T2'), // docs card provider fails before spawning → coder fallback, reviewer
+    done('T2'), // docs card provider fails → coder fallback; docs skip review by default
   ]);
 
   const app = await startApp();
@@ -36,7 +36,7 @@ test('pipeline: planner → coder → reviewer per handoff; provider failure fal
     assert.ok(handoffs.every((e) => e.payload.tokens > 0 && e.payload.tokens < 400));
     assert.ok(handoffs.some((e) => e.payload.reason === 'fallback de provedor'));
     const c = calls(log);
-    assert.deepEqual(c.map(model), ['opus', 'haiku', 'haiku', 'haiku', 'haiku']);
+    assert.deepEqual(c.map(model), ['opus', 'haiku', 'haiku', 'haiku']);
     assert.ok(c[0].args.includes('--json-schema'));
     // Executors get only the handoff, never the user's original request.
     for (const x of c.slice(1)) assert.ok(!x.stdin.includes('Pedido original'), x.stdin);
@@ -130,6 +130,30 @@ test('routing table: category picks the card first, then role match, then coder 
     assert.deepEqual(docs.slice(0, 2), ['Docs (DeepSeek)', 'Codificador']);
     await app.api('PUT', '/api/settings', { ...app.store.settings(), routing: { 'small-change': [by('Revisor').id] } });
     assert.equal(app.orch.route({ ...h('T', 'coder'), category: 'small-change' } as any)[0].name, 'Revisor');
+  } finally {
+    await app.app.close();
+  }
+});
+
+test('repo map: a cheap agent writes the brief once; the planner gets it; unchanged tree reuses it', async () => {
+  const log = fakeScript([
+    { text: 'BRIEF: projeto X em src/' }, // map agent (Revisor card reused as the cheap mapper here)
+    { structured: { summary: 'p', tasks: [h('T1', 'coder')] } }, done('T1'), done('T1'),
+    { structured: { summary: 'p', tasks: [h('T1', 'coder')] } }, done('T1'), done('T1'), // second run: no map call
+  ]);
+  const app = await startApp();
+  try {
+    const { execSync } = await import('node:child_process');
+    execSync('git init -q', { cwd: app.ws });
+    const mapper = app.store.agents().find((a) => a.name === 'Revisor')!;
+    await app.api('PUT', '/api/settings', { ...app.store.settings(), repoMap: mapper.id });
+    await runToEnd(app, 'pedido 1');
+    await runToEnd(app, 'pedido 2');
+    const c = calls(log);
+    assert.match(sysPrompt(c[0]), /repository brief/);
+    assert.match(c[1].stdin, /BRIEF: projeto X/);
+    assert.match(c[4].stdin, /BRIEF: projeto X/); // cached
+    assert.equal(c.length, 7);
   } finally {
     await app.app.close();
   }

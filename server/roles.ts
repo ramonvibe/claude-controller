@@ -59,6 +59,11 @@ Reply ONLY with a JSON object: {"task_id","status":"done|failed","summary":"<=5 
   custom: `You are a helpful coding agent. Be concise.`,
 };
 
+export const MAPPER = `Write a repository brief for a senior engineer who will plan changes without reading the code.
+At most 800 tokens: purpose, stack and versions, directory layout, key modules with their paths and one-line role,
+conventions (style, patterns, error handling), how to run and test. Read only what you need. Do not edit anything.
+Reply with the brief only, as plain Markdown.`;
+
 export const AGENT_MODE_PLANNER = `You are the planner of a team of cheaper coding agents. Read only what you need from the repository.
 Delegate each subtask with the orq "delegate_task" tool, one self-contained handoff at a time
 (file paths not contents, exact interfaces, runnable acceptance commands, constraints, under 400 tokens).

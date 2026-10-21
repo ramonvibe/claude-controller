@@ -28,7 +28,7 @@ test('snapshotTree: captures untracked + modified files without touching the use
 
 test('pre-flight flags a disconnected first card and offers a connected alternative; override routes around it', async () => {
   process.env.FAKE_DSH = 'account-sign-in-required';
-  fakeScript([{ structured: { summary: 'p', tasks: [h('T1', 'docs', 'docs')] } }, done('T1'), done('T1')]);
+  fakeScript([{ structured: { summary: 'p', tasks: [h('T1', 'docs', 'docs')] } }, done('T1')]);
   const app = await startApp();
   try {
     const pf = await app.api('GET', '/api/preflight');
@@ -43,7 +43,7 @@ test('pre-flight flags a disconnected first card and offers a connected alternat
     assert.ok(!evs.some((e) => e.agentId === dshAgent.id), 'disconnected card never tried');
 
     const t = await app.api('GET', `/api/runs/${runId}/trace`);
-    assert.deepEqual(t.tasks.map((x: any) => [x.role, x.category]), [['planner', null], ['docs', 'docs'], ['reviewer', 'docs']]);
+    assert.deepEqual(t.tasks.map((x: any) => [x.role, x.category]), [['planner', null], ['docs', 'docs']]); // docs: no review by default
     const tk = t.tasks[1].tokens;
     assert.deepEqual([tk.novos, tk.reaproveitados, tk.saida], [50, 30, 20]); // fake: in 10 + cacheCreate 40, cacheRead 30, out 20
     assert.equal(t.totals.outsideTokens, 0);

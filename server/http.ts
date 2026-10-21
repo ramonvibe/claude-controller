@@ -33,6 +33,8 @@ const SettingsInput = z.object({
   mode: z.enum(['pipeline', 'agent']),
   routing: z.partialRecord(z.enum(CATEGORIES), z.array(z.string()).max(5)).default({}),
   skills: z.array(z.string().max(300)).max(50).default([]),
+  review: z.partialRecord(z.enum(CATEGORIES), z.boolean()).default({ docs: false }),
+  repoMap: z.string().nullable().default(null),
 });
 
 const TYPES: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json' };

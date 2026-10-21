@@ -140,3 +140,24 @@ O objetivo, reafirmado por você: qualquer IA de terceiros, grátis ou paga, dev
   - **Não verificado na Gemini CLI:** o login pelo botão e o formato de `-o stream-json`. Com `NO_BROWSER` (modo sem navegador), ela recusa o login em modo não interativo. O mapeamento de eventos segue a documentação da CLI e ainda precisa de uma fixture real.
 - **Skills padrão:** o app lê as skills de `~/.claude/skills`, dos plugins (só a versão mais nova de cada) e de `.claude/skills` do workspace. O texto delas entra no prompt de qualquer provedor. As padrão são definidas nas Configurações, e cada card pode usar uma lista própria. A UI mostra o custo em tokens por chamada.
 - **Run real no card DeepSeek** (`dsh`, conta grátis): o modelo escreveu um `README.md` pelo app e devolveu o resultado em JSON. O uso foi real (cerca de 6k tokens por passo, quase tudo `cache_read`) e o custo, US$ 0.
+
+## Rodada 3: rastreabilidade, checagem antes de rodar, tela limpa e modos de economia
+
+Princípio, nas suas palavras: o mais importante é o pedido ser entregue, então o Opus continua sempre planejando e arquitetando. Por isso não há teto de tokens por run nem triagem que pule o Opus.
+
+- **Checagem antes de rodar (`GET /api/preflight`).** Antes de cada run, o app confere se o primeiro card de cada categoria, o Planejador e o Revisor estão conectados. Se algum não estiver, a UI pergunta: Conectar, "Usar X só desta vez" ou Cancelar. A escolha vai como `overrides` no `POST /api/runs`, e o card desconectado nem é tentado. A troca automática de provedor durante o run continua existindo, mas agora aparece na linha do tempo.
+- **Chave colada na tela (`POST /api/keys`).** A chave é gravada uma vez no `.env` local (modo 0600) e nunca é devolvida. Isso relaxa, com o seu ok, a regra "a chave nunca passa pelo frontend": ela atravessa o navegador uma única vez, só localmente.
+- **Linha do tempo por run (`GET /api/runs/:id/trace`).** Mostra, para cada tarefa:
+  - papel, categoria, card e modelo;
+  - se rodou fora do Claude;
+  - duração;
+  - o handoff recebido;
+  - as ferramentas usadas, com o arquivo ou comando de cada uma;
+  - os arquivos alterados;
+  - os tokens em três números: novos (entrada + escrita de cache), reaproveitados (leitura de cache) e saída.
+- **Diff por tarefa.** Antes e depois de cada tarefa, o app tira um snapshot da árvore de trabalho com um índice git descartável (`GIT_INDEX_FILE`, `add -A`, `write-tree`). O snapshot inclui arquivos não rastreados e respeita o `.gitignore`. O índice, o branch e os arquivos do usuário ficam intocados (há teste para isso). O diff fica em `GET /api/tasks/:id/diff`.
+- **Cota por run.** É a utilização da janela de 5h antes do run (o último valor visto) e depois (o último `rate_limit_event` do run). O valor é aproximado: a granularidade é de 1%, e outras sessões suas também consomem a cota.
+- **"Feito fora do Claude":** a porcentagem dos tokens do run que foram processados por outras IAs.
+- **Tela limpa.** O Início mostra o pedido, os cards compactos (papel, modelo, tipo de preço, status e tokens), a linha do tempo e um bloco de primeiros passos. A edição completa do card fica num modal. Workspace, modo, roteamento, revisão, mapa e skills ficam em Configurar. O feed bruto de eventos foi removido.
+- **Revisão por categoria.** O padrão é revisar todas as categorias menos docs.
+- **Mapa do repositório.** Um card barato ou grátis, escolhido em Configurar, escreve um resumo do projeto de até cerca de 800 tokens. O Opus planeja lendo esse resumo e só abre arquivos onde ele não basta. O resumo fica em cache pelo snapshot exato da árvore, então é refeito só quando o código muda. Se o mapa falhar, o Opus segue lendo o código.

@@ -27,6 +27,8 @@ export type Settings = {
   mode: 'pipeline' | 'agent';
   routing: Partial<Record<Category, string[]>>; // category → agent ids, in order (primary, fallbacks)
   skills: string[]; // default skills for every agent
+  review: Partial<Record<Category, boolean>>; // false = no reviewer for that category
+  repoMap: string | null; // agent that writes the repository brief the planner reads first
 };
 
 export type Usage = {

@@ -3,7 +3,8 @@ import { join } from 'node:path';
 import type { Store } from './db.ts';
 import { newId, type Engine, type ExecResult } from './engine.ts';
 import { Plan, planSchema, resultSchema, parseStructured, toResult, estimateTokens, Handoff, type Result } from './handoff.ts';
-import { AGENT_MODE_PLANNER, TEMPLATES } from './roles.ts';
+import { AGENT_MODE_PLANNER, MAPPER, TEMPLATES } from './roles.ts';
+import { snapshotTree } from './proc.ts';
 import { orqServer, PRESETS, resolveMcps, writeMcpConfig } from './mcps.ts';
 import claude from './adapters/claude.ts';
 import type { Agent } from './types.ts';
@@ -93,7 +94,13 @@ export class Orchestrator {
   }
 
   private async pipeline(runId: string, planner: Agent, prompt: string) {
-    const r = await this.engine.execute({ runId, agent: planner, prompt: `Request:\n${prompt}`, schema: planSchema });
+    const brief = await this.repoBrief(runId);
+    const r = await this.engine.execute({
+      runId,
+      agent: planner,
+      prompt: `Request:\n${prompt}` + (brief ? `\n\nRepository brief (written by a cheaper model; read files only where it is not enough):\n${brief}` : ''),
+      schema: planSchema,
+    });
     if (!r.ok) return { status: 'error', summary: `Planejador falhou: ${r.error}` };
     const plan = parseStructured(Plan, r.structured, r.text);
     if (!plan) return { status: 'error', summary: 'Planejador não devolveu um plano válido.' };
@@ -120,7 +127,7 @@ export class Orchestrator {
   private async handleInner(runId: string, h: Handoff): Promise<Result> {
     const candidates = this.route(h, runId);
     if (!candidates.length) return fail(h, `Nenhum agente ativo para o papel ${h.role}.`);
-    const reviewer = this.enabled('reviewer')[0];
+    const reviewer = this.store.settings().review[h.category] === false ? undefined : this.enabled('reviewer')[0];
     let agent = candidates[0];
     let escalated = false;
     let note: string | null = null;
@@ -177,6 +184,24 @@ export class Orchestrator {
     const exec = await this.engine.execute({ runId, agent: reviewer, role: 'reviewer', prompt, schema: resultSchema, category: h.category });
     // A reviewer that crashes must not block the pipeline: accept the executor's own checks.
     return exec.ok ? toResult(h.task_id, exec.structured, exec.text, false) : { ...r, summary: `revisor indisponível: ${exec.error}` };
+  }
+
+  /** Brief of the workspace from the configured (cheap) map agent, cached per exact working-tree snapshot. */
+  private async repoBrief(runId: string): Promise<string | null> {
+    const id = this.store.settings().repoMap;
+    const agent = id ? this.store.agent(id) : undefined;
+    if (!agent?.enabled) return null;
+    const tree = await snapshotTree(this.engine.workspace());
+    const key = `repomap:${this.engine.workspace()}:${tree}`;
+    const cached = tree && (this.store.db.prepare('select value from kv where key=?').get(key) as { value: string } | undefined);
+    if (cached) {
+      this.store.emit({ runId, taskId: null, agentId: agent.id, kind: 'status', payload: { kind: 'status', text: 'mapa do repositório reaproveitado (nada mudou)' } });
+      return cached.value;
+    }
+    const r = await this.engine.execute({ runId, agent, role: 'custom', systemPrompt: MAPPER, prompt: 'Map this repository.' });
+    if (!r.ok || !r.text.trim()) return null; // the planner still works without it, just reads more
+    if (tree) this.store.db.prepare('insert into kv (key, value) values (?, ?) on conflict(key) do update set value=excluded.value').run(key, r.text.slice(0, 8000));
+    return r.text.slice(0, 8000);
   }
 
   /** Agent mode: the planner delegates through the orq MCP server itself (phase 4). */

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
 import type { Agent, BusEvent, Settings, Usage } from './types.ts';
 
-const DEFAULT_SETTINGS: Settings = { workspace: null, testCommands: ['npm test'], parallel: false, mode: 'pipeline', routing: {}, skills: [] };
+const DEFAULT_SETTINGS: Settings = { workspace: null, testCommands: ['npm test'], parallel: false, mode: 'pipeline', routing: {}, skills: [], review: { docs: false }, repoMap: null };
 
 /** Cards saved by older versions lack newer fields. */
 const withDefaults = (a: Agent): Agent => ({ ...a, mcps: a.mcps ?? [], skills: a.skills === undefined ? null : a.skills, effort: a.effort ?? null });

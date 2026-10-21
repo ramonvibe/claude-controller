@@ -14,6 +14,7 @@ export function Providers({ onBack, connectors }: { onBack: () => void; connecto
   const [filter, setFilter] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [key, setKey] = useState('');
 
   const load = () =>
     Promise.all([api('GET', '/api/catalog'), api('GET', '/api/providers')])
@@ -30,7 +31,8 @@ export function Providers({ onBack, connectors }: { onBack: () => void; connecto
     setErr('');
     setModels(null);
     setPicked(new Set());
-    setDraft({ catalog: c.id, label: c.label, baseUrl: c.baseUrl ?? '', keyEnv: c.keyEnv ?? '', keyUrl: c.keyUrl, note: c.note, tier: c.tier });
+    setKey('');
+    setDraft({ catalog: c.id, label: c.label, baseUrl: c.baseUrl ?? '', keyEnv: c.keyEnv ?? '', keyUrl: c.keyUrl, note: c.note, tier: c.tier, keySet: c.keySet });
   };
   const fetchModels = async () => {
     setBusy(true);
@@ -98,10 +100,22 @@ export function Providers({ onBack, connectors }: { onBack: () => void; connecto
               Pegue a chave{draft.keyUrl ? <> em <a href={draft.keyUrl} target="_blank" rel="noreferrer">{draft.keyUrl}</a></> : ''}.
             </li>
             <li>
-              Adicione ao arquivo <code>.env</code> na pasta do Claude Controller (a chave nunca passa pelo navegador):
-              <pre>{`${draft.keyEnv || 'NOME_DA_CHAVE'}=sua-chave-aqui`}</pre>
+              Cole a chave aqui. Ela fica só no arquivo <code>.env</code> deste computador e nunca é mostrada de novo:
+              <div className="keyrow">
+                <input type="password" autoComplete="off" placeholder={draft.keySet ? 'chave já salva — cole outra para trocar' : 'cole a chave'} value={key} onChange={(e) => setKey(e.target.value.trim())} aria-label="Chave de API" />
+                <button disabled={!key || !draft.keyEnv} onClick={async () => {
+                  try {
+                    await api('POST', '/api/keys', { name: draft.keyEnv, value: key });
+                    setKey('');
+                    setDraft({ ...draft, keySet: true });
+                    await fetchModels();
+                  } catch (e: any) {
+                    setErr(e.message);
+                  }
+                }}>Salvar chave</button>
+              </div>
             </li>
-            <li>Clique em <b>Verificar e buscar modelos</b>; não precisa reiniciar.</li>
+            <li>Escolha os modelos. Os <b>(free)</b> não gastam nada; modelos sem ferramentas não conseguem editar arquivos.</li>
           </ol>
           <div className="row">
             <label>Nome<input value={draft.label} onChange={(e) => setDraft({ ...draft, label: e.target.value })} /></label>

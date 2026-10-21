@@ -79,6 +79,15 @@ Na tela principal, a tabela **Quem faz cada tipo de tarefa** define, por categor
 
 **Skills padrão:** marque as skills que valem para todos os agentes. O app lista as suas skills do Claude Code e mostra quantos tokens cada uma custa por chamada. Cada card pode usar uma lista própria.
 
+## Acompanhar e economizar
+
+- **Antes de rodar**, o app confere se as IAs escolhidas estão conectadas. Se alguma não estiver, ele pergunta antes de usar outra; nunca cai no Claude sem avisar.
+- **Linha do tempo:** em cada pedido aparece a cota de 5h antes e depois, os tokens do Opus e quanto foi feito fora do Claude. Cada tarefa mostra quem fez, a categoria, o que recebeu, as ferramentas usadas, os arquivos alterados, o diff e os tokens (novos · cache · saída).
+- **Em Configurar:**
+  - **Mapa do repositório:** um modelo grátis resume o projeto e o Opus planeja lendo esse resumo.
+  - **Revisão por categoria.**
+  - **Modo Pipeline**, que gasta menos Opus que o modo Agente.
+
 ## Como funciona
 
 - **Pipeline** (padrão):

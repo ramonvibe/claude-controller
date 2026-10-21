@@ -8,9 +8,9 @@ export const CATEGORY_LABELS: Record<string, string> = {
   docs: 'Documentação / README',
 };
 
-type Props = { routing: Record<string, string[]>; agents: any[]; onChange: (routing: Record<string, string[]>) => void };
+type Props = { routing: Record<string, string[]>; review: Record<string, boolean>; agents: any[]; onChange: (routing: Record<string, string[]>) => void; onReview: (review: Record<string, boolean>) => void };
 
-export function Routing({ routing, agents, onChange }: Props) {
+export function Routing({ routing, review, agents, onChange, onReview }: Props) {
   const label = (a: any) => `${a.name} · ${MODEL_LABELS[a.model] ?? a.model}`;
   const set = (cat: string, slot: number, id: string) => {
     const cur = [...(routing[cat] ?? [])];
@@ -20,9 +20,9 @@ export function Routing({ routing, agents, onChange }: Props) {
   return (
     <section className="routing" aria-label="Roteamento por categoria">
       <h2>Quem faz cada tipo de tarefa</h2>
-      <p className="muted">O Opus classifica cada tarefa numa categoria. Se o primeiro card falhar ou estourar o limite, o reserva assume.</p>
+      <p className="muted">O Opus planeja e classifica cada tarefa numa categoria. Se o primeiro card falhar, o reserva assume. Revisão: um revisor confere a entrega contra os critérios de aceite antes de seguir (mais segurança, mais tokens).</p>
       <table>
-        <thead><tr><th>Categoria</th><th>Card</th><th>Reserva</th></tr></thead>
+        <thead><tr><th>Categoria</th><th>Card</th><th>Reserva</th><th>Revisão</th></tr></thead>
         <tbody>
           {Object.entries(CATEGORY_LABELS).map(([cat, text]) => (
             <tr key={cat}>
@@ -37,6 +37,9 @@ export function Routing({ routing, agents, onChange }: Props) {
                   </select>
                 </td>
               ))}
+              <td>
+                <input type="checkbox" checked={review[cat] !== false} onChange={(e) => onReview({ ...review, [cat]: e.target.checked })} aria-label={`${text}: revisar`} />
+              </td>
             </tr>
           ))}
         </tbody>

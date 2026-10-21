@@ -1,43 +1,48 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, subscribe, fmtTokens, fmtUsd } from './api.ts';
+import { api, subscribe } from './api.ts';
 import { applyEvent, cardStatus, fromSnapshot, type StatusState } from './status.ts';
 import { Card, type UsageRow } from './Card.tsx';
-import { Activity } from './Activity.tsx';
+import { CompactCard } from './CompactCard.tsx';
+import { RunTrace } from './RunTrace.tsx';
 import { Diagnostics } from './Diagnostics.tsx';
 import { Routing } from './Routing.tsx';
 import { Providers } from './Providers.tsx';
 import { Connectors } from './Connectors.tsx';
 import { DefaultSkills, type SkillInfo } from './Skills.tsx';
+import { Preflight } from './Preflight.tsx';
 
 type Snapshot = {
   agents: any[];
-  settings: { workspace: string | null; testCommands: string[]; parallel: boolean; mode: 'pipeline' | 'agent'; routing: Record<string, string[]>; skills: string[] };
+  settings: { workspace: string | null; testCommands: string[]; parallel: boolean; mode: 'pipeline' | 'agent'; routing: Record<string, string[]>; skills: string[]; review?: Record<string, boolean>; repoMap?: string | null };
   providers: { id: string; label: string; models: string[]; external: boolean; tier?: string | null; modelTiers?: Record<string, string> }[];
   mcps?: { id: string; label: string; kind: string; providers: string[]; available: boolean; schemaTokens: number | null }[];
   usage: UsageRow[];
   live: any;
   rateLimit: any;
 };
+type View = 'main' | 'config' | 'providers' | 'diag';
 
 const NEW_AGENT = { name: 'Novo agente', provider: 'claude-cli', model: 'haiku', role: 'coder' };
 
 export function App() {
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [status, setStatus] = useState<StatusState>({ running: {}, error: {} });
-  const [events, setEvents] = useState<any[]>([]);
   const [activity, setActivity] = useState<Record<string, string>>({});
   const [usage, setUsage] = useState<UsageRow[]>([]);
+  const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [prompt, setPrompt] = useState('');
   const [err, setErr] = useState('');
-  const [view, setView] = useState<'main' | 'diag' | 'providers'>('main');
-  const [runsTick, setRunsTick] = useState(0);
-  const [skills, setSkills] = useState<SkillInfo[]>([]);
+  const [view, setView] = useState<View>('main');
+  const [tick, setTick] = useState(0);
+  const [latestRun, setLatestRun] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [preflight, setPreflight] = useState<any[] | null>(null);
   const refresh = useRef<() => void>(() => {});
 
   refresh.current = async () => {
-    const [s, mcps, skills] = await Promise.all([api<Snapshot>('GET', '/api/state'), api('GET', '/api/mcps'), api<SkillInfo[]>('GET', '/api/skills')]);
+    const [s, mcps, sk] = await Promise.all([api<Snapshot>('GET', '/api/state'), api('GET', '/api/mcps'), api<SkillInfo[]>('GET', '/api/skills')]);
     setSnap({ ...s, mcps });
-    setSkills(skills);
+    setSkills(sk);
     setStatus(fromSnapshot(s.live));
     setUsage(s.usage);
   };
@@ -47,22 +52,14 @@ export function App() {
       subscribe(
         (ev) => {
           setStatus((s) => applyEvent(s, ev));
-          if (ev.kind !== 'delta') setEvents((e) => [...e.slice(-400), ev]);
           if (ev.kind === 'agents_changed') refresh.current();
           if (ev.kind === 'rate_limit') setSnap((s) => s && { ...s, rateLimit: ev.payload.info });
-          if (ev.kind === 'usage')
-            setUsage((u) => [...u, { agentId: ev.agentId, model: ev.payload.model, ...ev.payload, priced: ev.payload.costUsd == null ? 0 : 1 }]);
-          if (['run_started', 'run_done', 'result', 'error'].includes(ev.kind)) setRunsTick((t) => t + 1);
+          if (ev.kind === 'usage') setUsage((u) => [...u, { agentId: ev.agentId, ...ev.payload, priced: ev.payload.costUsd == null ? 0 : 1 }]);
+          if (ev.kind === 'run_started') setLatestRun(ev.runId);
+          if (ev.runId && ev.kind !== 'delta') setTick((t) => t + 1);
           if (ev.agentId) {
-            const line =
-              ev.kind === 'started' ? `iniciou (${ev.payload.role}, ~${ev.payload.inputTokens} tokens de entrada)`
-              : ev.kind === 'delta' ? ev.payload.text
-              : ev.kind === 'tool_use' ? `ferramenta: ${ev.payload.name}`
-              : ev.kind === 'status' ? ev.payload.text
-              : ev.kind === 'error' ? `erro: ${ev.payload.message}`
-              : ev.kind === 'result' ? 'concluiu'
-              : null;
-            if (line) setActivity((a) => ({ ...a, [ev.agentId]: String(line).slice(0, 240) }));
+            const line = ev.kind === 'delta' ? ev.payload.text : ev.kind === 'tool_use' ? `usando ${ev.payload.name}` : ev.kind === 'started' ? 'começou' : null;
+            if (line) setActivity((a) => ({ ...a, [ev.agentId]: String(line).slice(0, 160) }));
           }
         },
         () => refresh.current(),
@@ -89,104 +86,129 @@ export function App() {
   if (view === 'diag') return <Diagnostics onBack={() => setView('main')} />;
   if (view === 'providers') return <Providers onBack={() => { setView('main'); refresh.current(); }} connectors={<Connectors />} />;
 
-  const opusTokens = usage.filter((u) => /opus/.test(u.model)).reduce((s, u) => s + u.input + u.output + u.cacheRead + u.cacheCreate, 0);
-  const windows = snap.rateLimit?.unifiedWindows ?? {};
   const settings = snap.settings;
   const saveSettings = (patch: Partial<Snapshot['settings']>) =>
     act(async () => {
       const s = await api('PUT', '/api/settings', { ...settings, ...patch });
       setSnap({ ...snap, settings: s });
     });
-  const running = snap.agents.filter((a) => cardStatus(status, a.id) === 'running').length;
+  const run = (overrides: Record<string, string> = {}) => act(async () => {
+    setPreflight(null);
+    await api('POST', '/api/runs', { prompt, overrides });
+  });
+  const start = () => act(async () => {
+    const pf = await api('GET', '/api/preflight');
+    if (pf.ok) await run();
+    else setPreflight(pf.problems);
+  });
+  const fiveH = snap.rateLimit?.unifiedWindows?.five_hour;
+  const sevenD = snap.rateLimit?.unifiedWindows?.seven_day;
+  const editAgent = snap.agents.find((a) => a.id === editing);
+  const providerOf = (id: string) => snap.providers.find((p) => p.id === id);
+  const freeConnected = snap.providers.some((p) => p.external);
+  const nav = (
+    <nav className="nav">
+      {(['main', 'config', 'providers', 'diag'] as View[]).map((v) => (
+        <button key={v} className={`link ${view === v ? 'on' : ''}`} onClick={() => setView(v)}>
+          {{ main: 'Início', config: 'Configurar', providers: 'Provedores', diag: 'Diagnóstico' }[v]}
+        </button>
+      ))}
+    </nav>
+  );
 
   return (
     <div className="app">
       <header>
         <h1>Claude Controller</h1>
-        <div className="meters" aria-label="Consumo">
-          <span className="meter strong" title="Tokens de Opus (todas as execuções): a cota escassa do plano">
-            Opus: {fmtTokens(opusTokens)} tokens
-          </span>
-          {Object.entries(windows).map(([k, w]: [string, any]) => (
-            <span key={k} className="meter" title={`reinicia ${new Date(w.resetsAt * 1000).toLocaleString()}`}>
-              cota {k === 'five_hour' ? '5h' : k === 'seven_day' ? '7d' : k}: {Math.round(w.utilization * 100)}%
-            </span>
-          ))}
-          <span className="meter">{running} ativo(s)</span>
+        {nav}
+        <div className="meters" aria-label="Cota do Claude">
+          {fiveH && <span className="meter strong" title={`reinicia ${new Date(fiveH.resetsAt * 1000).toLocaleString()}`}>cota 5h: {Math.round(fiveH.utilization * 100)}%</span>}
+          {sevenD && <span className="meter">7d: {Math.round(sevenD.utilization * 100)}%</span>}
         </div>
-        <button className="link" onClick={() => setView('providers')}>Provedores</button>
-        <button className="link" onClick={() => setView('diag')}>Diagnóstico</button>
       </header>
-
-      <section className="settings" aria-label="Workspace">
-        <label>
-          Workspace
-          <input
-            defaultValue={settings.workspace ?? ''}
-            placeholder="/caminho/do/repositório"
-            onBlur={(e) => e.target.value !== (settings.workspace ?? '') && saveSettings({ workspace: e.target.value || null })}
-          />
-        </label>
-        <label>
-          Comandos de teste
-          <input
-            defaultValue={settings.testCommands.join(', ')}
-            onBlur={(e) => saveSettings({ testCommands: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
-          />
-        </label>
-        <label>
-          Modo
-          <select value={settings.mode} onChange={(e) => saveSettings({ mode: e.target.value as any })}>
-            <option value="pipeline">Pipeline (backend conduz)</option>
-            <option value="agent">Agente (Opus delega via MCP orq)</option>
-          </select>
-        </label>
-        <label className="check">
-          <input type="checkbox" checked={settings.parallel} onChange={(e) => saveSettings({ parallel: e.target.checked })} />
-          Paralelo (experimental)
-        </label>
-      </section>
-
-      <DefaultSkills all={skills} value={settings.skills} onChange={(ids) => saveSettings({ skills: ids })} />
-      <Routing routing={settings.routing} agents={snap.agents.filter((a) => a.enabled)} onChange={(routing) => saveSettings({ routing })} />
-
-      <section className="prompt" aria-label="Pedido">
-        <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Descreva o que quer construir ou corrigir…" rows={3} />
-        <button className="primary" disabled={!prompt.trim()} onClick={() => act(() => api('POST', '/api/runs', { prompt }))}>
-          Rodar orquestrado
-        </button>
-      </section>
       {err && <p className="err" role="alert">{err}</p>}
 
-      <div className="layout">
-        <section className="grid" aria-label="Agentes">
-          {snap.agents.map((a) => (
-            <Card
-              key={a.id}
-              agent={a}
-              providers={snap.providers}
-              mcps={snap.mcps ?? []}
-              skills={skills}
-              defaultSkills={settings.skills}
-              status={cardStatus(status, a.id)}
-              activity={activity[a.id]}
-              usage={byAgent[a.id] ?? []}
-              onSave={(next) => act(() => api('PUT', `/api/agents/${a.id}`, next))}
-              onDelete={() => act(() => api('DELETE', `/api/agents/${a.id}`))}
-              onRun={() => act(() => api('POST', '/api/tasks', { agentId: a.id, prompt }))}
-              onCancel={() => act(async () => {
-                for (const t of status.running[a.id] ?? []) await api('POST', `/api/tasks/${t}/cancel`);
-              })}
-              canRun={Boolean(prompt.trim())}
-            />
-          ))}
-          <button className="add" onClick={() => act(() => api('POST', '/api/agents', NEW_AGENT))} aria-label="Adicionar agente">
-            +
-            <span>Adicionar</span>
-          </button>
-        </section>
-        <Activity events={events} agents={snap.agents} tick={runsTick} fmtUsd={fmtUsd} />
-      </div>
+      {view === 'config' ? (
+        <>
+          <section className="panel settings" aria-label="Workspace">
+            <label>
+              Workspace (pasta do projeto)
+              <input defaultValue={settings.workspace ?? ''} placeholder="/caminho/do/projeto"
+                onBlur={(e) => e.target.value !== (settings.workspace ?? '') && saveSettings({ workspace: e.target.value || null })} />
+            </label>
+            <label>
+              Comandos de teste permitidos
+              <input defaultValue={settings.testCommands.join(', ')} onBlur={(e) => saveSettings({ testCommands: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} />
+            </label>
+            <label>
+              Modo
+              <select value={settings.mode} onChange={(e) => saveSettings({ mode: e.target.value as any })}>
+                <option value="pipeline">Pipeline: o Opus só planeja (gasta menos)</option>
+                <option value="agent">Agente: o Opus delega sozinho (gasta mais Opus)</option>
+              </select>
+            </label>
+            <label title="Um modelo barato/grátis resume o projeto antes; o Opus planeja lendo o resumo em vez do código. Reaproveitado enquanto nada muda.">
+              Mapa do repositório feito por
+              <select value={settings.repoMap ?? ''} onChange={(e) => saveSettings({ repoMap: e.target.value || null })}>
+                <option value="">ninguém (o Opus lê o código)</option>
+                {snap.agents.filter((a) => a.enabled).map((a) => <option key={a.id} value={a.id}>{a.name} · {a.model}</option>)}
+              </select>
+            </label>
+            <label className="check">
+              <input type="checkbox" checked={settings.parallel} onChange={(e) => saveSettings({ parallel: e.target.checked })} />
+              Paralelo (experimental)
+            </label>
+          </section>
+          <Routing routing={settings.routing} review={settings.review ?? {}} agents={snap.agents.filter((a) => a.enabled)}
+            onChange={(routing) => saveSettings({ routing })} onReview={(review) => saveSettings({ review })} />
+          <DefaultSkills all={skills} value={settings.skills} onChange={(ids) => saveSettings({ skills: ids })} />
+        </>
+      ) : (
+        <>
+          {(!settings.workspace || !freeConnected) && (
+            <section className="panel onboarding" aria-label="Primeiros passos">
+              <b>Primeiros passos</b>
+              <ol>
+                <li className={settings.workspace ? 'ok' : ''}>{settings.workspace ? `Workspace: ${settings.workspace}` : <>Defina a pasta do projeto em <button className="link" onClick={() => setView('config')}>Configurar</button>.</>}</li>
+                <li>Conecte IAs grátis (DeepSeek, Gemini, OpenRouter…) em <button className="link" onClick={() => setView('providers')}>Provedores</button>, para o Claude só planejar.</li>
+                <li>Em <button className="link" onClick={() => setView('config')}>Configurar</button>, escolha quem faz cada tipo de tarefa.</li>
+              </ol>
+            </section>
+          )}
+          <section className="prompt" aria-label="Pedido">
+            <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="O que você quer construir ou corrigir?" rows={3} />
+            <button className="primary" disabled={!prompt.trim()} onClick={start}>Rodar</button>
+          </section>
+
+          <div className="layout">
+            <section className="grid" aria-label="Agentes">
+              {snap.agents.map((a) => (
+                <CompactCard key={a.id} agent={a} provider={providerOf(a.provider)} status={cardStatus(status, a.id)} activity={activity[a.id]} usage={byAgent[a.id] ?? []}
+                  onEdit={() => setEditing(a.id)}
+                  onCancel={() => act(async () => { for (const t of status.running[a.id] ?? []) await api('POST', `/api/tasks/${t}/cancel`); })} />
+              ))}
+              <button className="add" onClick={() => act(() => api('POST', '/api/agents', NEW_AGENT))} aria-label="Adicionar agente">+<span>Adicionar</span></button>
+            </section>
+            <RunTrace tick={tick} latestRun={latestRun} />
+          </div>
+        </>
+      )}
+
+      {editAgent && (
+        <div className="modal" role="dialog" aria-modal="true" aria-label={`Editar ${editAgent.name}`} onClick={(e) => e.target === e.currentTarget && setEditing(null)}>
+          <div className="modal-box">
+            <Card agent={editAgent} providers={snap.providers} mcps={snap.mcps ?? []} status={cardStatus(status, editAgent.id)} skills={skills} defaultSkills={settings.skills}
+              activity={activity[editAgent.id]} usage={byAgent[editAgent.id] ?? []} canRun={Boolean(prompt.trim())}
+              onSave={(next) => act(() => api('PUT', `/api/agents/${editAgent.id}`, next))}
+              onDelete={() => act(async () => { await api('DELETE', `/api/agents/${editAgent.id}`); setEditing(null); })}
+              onRun={() => act(() => api('POST', '/api/tasks', { agentId: editAgent.id, prompt }))}
+              onCancel={() => act(async () => { for (const t of status.running[editAgent.id] ?? []) await api('POST', `/api/tasks/${t}/cancel`); })} />
+            <div className="card-actions"><span /><button onClick={() => setEditing(null)}>Fechar</button></div>
+          </div>
+        </div>
+      )}
+
+      {preflight && <Preflight problems={preflight} onRun={run} onCancel={() => setPreflight(null)} onConnect={() => { setPreflight(null); setView('providers'); }} />}
     </div>
   );
 }
