@@ -26,7 +26,7 @@ test('pipeline: planner → coder → reviewer per handoff; provider failure fal
     done('T1'), done('T1'), // coder, reviewer
     done('T2'), done('T2'), // docs card provider fails before spawning → coder fallback, reviewer
   ]);
-  process.env.DSH_BIN = '/nonexistent/dsh';
+
   const app = await startApp();
   try {
     const { evs, end, runId } = await runToEnd(app, 'Pedido original do usuário: adicionar flag');

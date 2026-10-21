@@ -6,6 +6,8 @@ import WebSocket from 'ws';
 
 export const FAKE = fileURLToPath(new URL('./fake-claude.mjs', import.meta.url));
 chmodSync(FAKE, 0o755);
+chmodSync(fileURLToPath(new URL('./fake-dsh.mjs', import.meta.url)), 0o755);
+process.env.DSH_BIN ??= fileURLToPath(new URL('./fake-dsh.mjs', import.meta.url)); // never spend real DeepSeek calls in tests
 process.env.CLAUDE_BIN = FAKE;
 
 export function tmp() {

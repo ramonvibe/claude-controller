@@ -27,7 +27,7 @@ Registro de fatos verificados e desvios em relação ao PLANO.md. Cada fixture c
   - `{"type":"final","text"}`
   - O código de saída é `1` quando há erro.
 - **O perfil headless usa por padrão a rota `deepseek-official`, que exige `DEEPSEEK_API_KEY`.** Sem a chave, falha com `MISSING_CREDENTIAL` (`fixtures/dsh/missing-credential.ndjson`).
-- **O perfil `web` usa `provider: deepseek-account`.** O headless já carrega os mesmos plugins de conta (`deepseek-account`, `llm-deepseek-account`, `credentials`), e as credenciais ficam no mesmo arquivo, `$DSH_HOME/.credentials.yaml`. Por isso o app passa um overlay próprio, `--patch server/adapters/dsh/account.patch.yml`, que troca o provider para `deepseek-account`. O seu perfil fica intocado.
+- **O perfil `web` usa `provider: deepseek-account`.** O headless já carrega os mesmos plugins de conta (`deepseek-account`, `llm-deepseek-account`, `credentials`), e as credenciais ficam no mesmo arquivo, `$DSH_HOME/.credentials.yaml`. Por isso o app passa um overlay próprio, `--patch` (gerado por execução pelo adapter `server/adapters/dsh.ts`, com o modelo do card), que troca o provider para `deepseek-account`. O seu perfil fica intocado.
 - **Mesmo com o overlay, o headless respondeu `ACCOUNT_SIGN_IN_REQUIRED`** (`fixtures/dsh/account-sign-in-required.ndjson`). No código, `resolveToken` devolve `undefined` em três casos: quando não existe o registro `deepseek-account-platform/default` no arquivo de credenciais, quando o destino difere de `inferenceOrigin` ou quando o issuer é `localhost`. O arquivo de credenciais não foi lido, por decisão sua. Também não foi criada chave de API.
 - **Consequência:** o adapter `dsh` segue o formato observado, e o Diagnóstico mostra "não autenticado" quando recebe um desses dois códigos de erro. Quando o login da conta passar a ser gravado para o headless, o mesmo adapter funciona sem mudança.
 - **Uso de tokens do dsh: não observado.** Nenhuma chamada chegou ao modelo. O adapter aceita qualquer evento que tenha `inputTokens`/`outputTokens` (nomes encontrados no pacote `dsh-token-meter`). Se nada chegar, o adapter estima por caracteres e marca `source: "estimado"`.
@@ -70,3 +70,16 @@ Registro de fatos verificados e desvios em relação ao PLANO.md. Cada fixture c
 - **`MCP_TOOL_TIMEOUT`** é passado ao `claude` quando há MCP, porque o `delegate_task` bloqueia enquanto o sub-pipeline roda. A variável não aparece na `--help`, então não foi verificada; se for ignorada, não causa efeito nenhum. No run real, uma delegação de cerca de 25 s não estourou.
 - **Run real em modo agente** (o pedido `clamp`): o Opus chamou `mcp__orq__delegate_task` e recebeu só o resultado compacto. O Opus gastou 40,2k tokens, contra 17,8k no pipeline com um pedido de porte parecido, porque cada ida e volta de ferramenta reenvia o contexto do Opus. Isso confirma o pipeline como modo padrão (decisão 7).
 - **Medição de presets:** duas chamadas enxutas no Haiku, com e sem o preset. A allowlist `web-fetch` mediu 789 tokens por chamada. O preset `github` só aparece como disponível quando `GITHUB_TOKEN` existe no ambiente do backend.
+
+## Fase 5: adapter `dsh`
+
+- **O adapter entrou sem alterar o núcleo.** O commit da fase 5 adiciona apenas `server/adapters/dsh.ts` e testes, e o carregador lê automaticamente qualquer `*.ts` em `server/adapters/`. Há um teste de contrato para todos os adapters.
+- **O headless não tem flag de system prompt.** O template do papel vai na frente da tarefa, no stdin (`dsh ... --json -`). O modelo do card vai num overlay `--patch` temporário, que usa o provider `deepseek-account`.
+- **Detecção real (21/10):** a versão é `0.2.1-rc.2`, e a autenticação aparece como **"não autenticado"** (`ACCOUNT_SIGN_IN_REQUIRED`). O card "Docs (DeepSeek)" recebe o handoff, falha e o pipeline cai no codificador Claude. Isso está coberto por teste.
+- **Uso de tokens do DeepSeek:** sem evento de uso observado, o adapter estima por caracteres (`source: "estimado"`, `costUsd: null`, que aparece na UI como "sem preço").
+- **Limitação de permissões:** o `dsh` usa o próprio sandbox (`DSH_PERMISSION_MODE`, padrão `workspace-write`, com raiz no cwd) e ignora a allowlist do app. Duas mitigações cobrem isso:
+  - O roteamento nunca manda handoffs `sensitive` a provedores externos.
+  - O adapter compara o `HEAD` do git antes e depois da execução. Se o agente fizer um commit, a tarefa termina em erro `COMMIT_FORBIDDEN`. O app não desfaz o commit; essa decisão fica com você.
+
+  A leitura de `.env` pelo `dsh` **não** é bloqueada.
+- **Os testes nunca chamam o `dsh` real.** `test/helpers.ts` aponta `DSH_BIN` para `test/fake-dsh.mjs`.

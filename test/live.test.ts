@@ -43,7 +43,7 @@ test('live: orchestrated run planner(Opus) → coder(Haiku) → reviewer(Haiku) 
   const { startApp, collect } = await import('./helpers.ts');
   process.env.CLAUDE_BIN = 'claude';
   delete process.env.FAKE_SCRIPT;
-  process.env.DSH_BIN = '/nonexistent/dsh';
+
   const app = await startApp();
   try {
     writeFileSync(join(app.ws, 'package.json'), JSON.stringify({ name: 'w', type: 'module', scripts: { test: 'node --test' } }));
@@ -71,7 +71,7 @@ test('live: agent mode — Opus delegates through the orq MCP server and gets co
   const { startApp, collect } = await import('./helpers.ts');
   process.env.CLAUDE_BIN = 'claude';
   delete process.env.FAKE_SCRIPT;
-  process.env.DSH_BIN = '/nonexistent/dsh';
+
   const app = await startApp();
   try {
     writeFileSync(join(app.ws, 'package.json'), JSON.stringify({ name: 'w', type: 'module', scripts: { test: 'node --test' } }));
