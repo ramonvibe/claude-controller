@@ -1,0 +1,6 @@
+# Route headless runs through the DeepSeek account login (same as the web profile).
+- id: agent-default-model
+  name: '@deepseek-ai/dsh-agent-default-model'
+  config:
+    provider: deepseek-account
+    model: deepseek-flash
