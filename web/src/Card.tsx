@@ -65,6 +65,18 @@ export function Card({ agent, providers, mcps, status, activity, usage, canRun, 
         </select>
       </label>
 
+      {agent.provider === 'claude-cli' && (
+        <label>
+          Esforço
+          <select value={agent.effort ?? ''} onChange={(e) => save({ effort: e.target.value || null })}>
+            <option value="">padrão do modelo</option>
+            {['low', 'medium', 'high', 'xhigh', 'max'].map((x) => (
+              <option key={x} value={x}>{x}</option>
+            ))}
+          </select>
+        </label>
+      )}
+
       {available.length > 0 && (
         <fieldset className="mcps">
           <legend>MCPs</legend>

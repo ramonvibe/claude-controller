@@ -39,9 +39,11 @@ export class Orchestrator {
   route(h: Handoff): Agent[] {
     const all = this.enabled();
     const allowed = (a: Agent) => !h.sensitive || !this.external(a);
-    let c = all.filter((a) => a.role === h.role && allowed(a));
+    const byCategory = (this.store.settings().routing[h.category] ?? []).map((id) => all.find((a) => a.id === id)).filter((a): a is Agent => Boolean(a) && allowed(a!));
+    let c = all.filter((a) => a.role === h.role && allowed(a) && !byCategory.includes(a));
     const busy = (a: Agent) => this.store.liveState().running.filter((t: any) => t.agentId === a.id).length;
     c.sort((a, b) => (DELEGABLE.has(h.role) ? Number(this.external(b)) - Number(this.external(a)) : 0) || busy(a) - busy(b));
+    c = [...byCategory, ...c];
     for (const a of all) if (a.role === 'coder' && !c.includes(a) && allowed(a)) c.push(a);
     return c;
   }

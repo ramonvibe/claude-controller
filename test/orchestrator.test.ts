@@ -5,7 +5,7 @@ import { fakeScript, startApp, collect } from './helpers.ts';
 import { disjointWaves } from '../server/orchestrator.ts';
 
 const h = (id: string, role: string, files: string[] = ['a.ts']) => ({
-  task_id: id, role, goal: `goal ${id}`, files, context: 'c', interfaces: 'i', steps: ['s'], acceptance: ['npm test'], constraints: [], sensitive: false,
+  task_id: id, role, category: role === 'docs' ? 'docs' : 'feature', goal: `goal ${id}`, files, context: 'c', interfaces: 'i', steps: ['s'], acceptance: ['npm test'], constraints: [], sensitive: false,
 });
 const done = (id: string) => ({ structured: { task_id: id, status: 'done', summary: `ok ${id}`, files_changed: ['a.ts'], checks: [{ cmd: 'npm test', ok: true }], questions: [] } });
 const calls = (log: string) => readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
@@ -115,4 +115,22 @@ test('sensitive handoffs never route to external providers', async () => {
 test('disjointWaves groups only consecutive non-overlapping handoffs', () => {
   const w = disjointWaves([h('1', 'coder', ['a']), h('2', 'coder', ['b']), h('3', 'coder', ['a']), h('4', 'coder', [])] as any);
   assert.deepEqual(w.map((x) => x.map((t) => t.task_id)), [['1', '2'], ['3'], ['4']]);
+});
+
+test('routing table: category picks the card first, then role match, then coder fallback', async () => {
+  const app = await startApp();
+  try {
+    const agents = app.store.agents();
+    const by = (n: string) => agents.find((a) => a.name === n)!;
+    const r = app.orch.route(h('T', 'coder') as any).map((a) => a.name); // category feature → Codificador
+    assert.equal(r[0], 'Codificador');
+    const arch = app.orch.route({ ...h('T', 'coder'), category: 'architecture' } as any).map((a) => a.name);
+    assert.equal(arch[0], 'Planejador');
+    const docs = app.orch.route(h('T', 'docs', ['README.md']) as any).map((a) => a.name);
+    assert.deepEqual(docs.slice(0, 2), ['Docs (DeepSeek)', 'Codificador']);
+    await app.api('PUT', '/api/settings', { ...app.store.settings(), routing: { 'small-change': [by('Revisor').id] } });
+    assert.equal(app.orch.route({ ...h('T', 'coder'), category: 'small-change' } as any)[0].name, 'Revisor');
+  } finally {
+    await app.app.close();
+  }
 });

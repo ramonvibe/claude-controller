@@ -44,6 +44,9 @@ Output a JSON plan: {"summary","tasks":[handoff...]}. Each handoff is self-conta
 file paths (not file contents), exact interfaces, steps, acceptance criteria that are runnable commands, constraints.
 Keep each handoff under 400 tokens. No conversation history, no justification of the plan.
 Roles: "coder" writes code, "tester" writes tests, "docs" writes documentation.
+Category (decides which model runs it, cheapest first, so be honest):
+"architecture" = design decisions or cross-cutting changes needing deep reasoning; "feature" = normal code following an existing design;
+"small-change" = small, low-risk edits (rename, copy text, style, config value); "tests" = writing tests; "docs" = README and docs.
 Set "sensitive": true for anything touching secrets, auth or personal data. Do not edit files yourself.
 Order tasks so that later ones may depend on earlier ones.`,
   coder: `You are a coder. ${EXECUTOR}`,

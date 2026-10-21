@@ -7,7 +7,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { fakeScript, startApp, collect } from './helpers.ts';
 import { ORQ_ENTRY } from '../server/mcps.ts';
 
-const h = { task_id: 'T1', role: 'coder', goal: 'g', files: ['a.ts'], context: 'c', interfaces: 'i', steps: ['s'], acceptance: ['npm test'], constraints: [], sensitive: false };
+const h = { task_id: 'T1', role: 'coder', category: 'feature', goal: 'g', files: ['a.ts'], context: 'c', interfaces: 'i', steps: ['s'], acceptance: ['npm test'], constraints: [], sensitive: false };
 const done = { structured: { task_id: 'T1', status: 'done', summary: 'feito', files_changed: ['a.ts'], checks: [], questions: [] } };
 const parse = (r: any) => JSON.parse(r.content[0].text);
 

@@ -138,3 +138,8 @@ label.check input { width: auto; }
 }
 .mcp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .mcp-table th, .mcp-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+.routing { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 12px 12px; margin-bottom: 12px; }
+.routing table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.routing td, .routing th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+.routing td:first-child { width: 34%; }
+.routing p { margin: 0 0 8px; font-size: 12px; }

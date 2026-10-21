@@ -86,7 +86,7 @@ test('dsh: a commit made by the agent is reported as an error', async () => {
 test('dsh: unauthenticated run in the pipeline falls back to the Claude coder', async () => {
   process.env.FAKE_DSH = 'account-sign-in-required';
   const { fakeScript, startApp, collect } = await import('./helpers.ts');
-  const h = { task_id: 'T1', role: 'docs', goal: 'g', files: ['README.md'], context: 'c', interfaces: 'i', steps: ['s'], acceptance: [], constraints: [], sensitive: false };
+  const h = { task_id: 'T1', role: 'docs', category: 'docs', goal: 'g', files: ['README.md'], context: 'c', interfaces: 'i', steps: ['s'], acceptance: [], constraints: [], sensitive: false };
   const done = { structured: { task_id: 'T1', status: 'done', summary: 'ok', files_changed: [], checks: [], questions: [] } };
   fakeScript([{ structured: { summary: 'p', tasks: [h] } }, done, done]);
   const app = await startApp();

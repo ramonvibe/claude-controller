@@ -4,10 +4,11 @@ import { applyEvent, cardStatus, fromSnapshot, type StatusState } from './status
 import { Card, type UsageRow } from './Card.tsx';
 import { Activity } from './Activity.tsx';
 import { Diagnostics } from './Diagnostics.tsx';
+import { Routing } from './Routing.tsx';
 
 type Snapshot = {
   agents: any[];
-  settings: { workspace: string | null; testCommands: string[]; parallel: boolean; mode: 'pipeline' | 'agent' };
+  settings: { workspace: string | null; testCommands: string[]; parallel: boolean; mode: 'pipeline' | 'agent'; routing: Record<string, string[]>; skills: string[] };
   providers: { id: string; label: string; models: string[]; external: boolean }[];
   mcps?: { id: string; label: string; kind: string; providers: string[]; available: boolean; schemaTokens: number | null }[];
   usage: UsageRow[];
@@ -138,6 +139,8 @@ export function App() {
           Paralelo (experimental)
         </label>
       </section>
+
+      <Routing routing={settings.routing} agents={snap.agents.filter((a) => a.enabled)} onChange={(routing) => saveSettings({ routing })} />
 
       <section className="prompt" aria-label="Pedido">
         <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Descreva o que quer construir ou corrigir…" rows={3} />

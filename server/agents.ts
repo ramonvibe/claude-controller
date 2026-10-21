@@ -41,4 +41,9 @@ export function seedAgents(store: Store) {
     { id: newId(), name: 'Docs (DeepSeek)', provider: 'dsh', model: 'deepseek-flash', role: 'docs', effort: null, limits, ...base },
   ];
   for (const a of seed) store.saveAgent(a);
+  const [planner, coder, , docs] = seed;
+  store.saveSettings({
+    ...store.settings(),
+    routing: { architecture: [planner.id], feature: [coder.id], 'small-change': [coder.id], tests: [coder.id], docs: [docs.id, coder.id] },
+  });
 }

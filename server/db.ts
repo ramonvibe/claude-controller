@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
 import type { Agent, BusEvent, Settings, Usage } from './types.ts';
 
-const DEFAULT_SETTINGS: Settings = { workspace: null, testCommands: ['npm test'], parallel: false, mode: 'pipeline' };
+const DEFAULT_SETTINGS: Settings = { workspace: null, testCommands: ['npm test'], parallel: false, mode: 'pipeline', routing: {}, skills: [] };
 
 export class Store {
   db: DatabaseSync;

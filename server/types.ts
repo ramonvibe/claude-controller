@@ -16,11 +16,16 @@ export type Agent = {
   enabled: boolean;
 };
 
+export const CATEGORIES = ['architecture', 'feature', 'small-change', 'tests', 'docs'] as const;
+export type Category = (typeof CATEGORIES)[number];
+
 export type Settings = {
   workspace: string | null;
   testCommands: string[];
   parallel: boolean;
   mode: 'pipeline' | 'agent';
+  routing: Partial<Record<Category, string[]>>; // category → agent ids, in order (primary, fallbacks)
+  skills: string[]; // default skills for every agent
 };
 
 export type Usage = {

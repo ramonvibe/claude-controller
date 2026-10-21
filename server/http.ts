@@ -9,6 +9,7 @@ import type { Store } from './db.ts';
 import type { Engine } from './engine.ts';
 import { newId } from './engine.ts';
 import { parseAgent } from './agents.ts';
+import { CATEGORIES } from './types.ts';
 
 export type Ctx = { store: Store; engine: Engine; token: string; staticDir: string; extraRoutes?: Route[] };
 export type Route = [method: string, path: RegExp, handler: (req: Req) => Promise<unknown> | unknown];
@@ -28,6 +29,8 @@ const SettingsInput = z.object({
   testCommands: z.array(z.string().min(1).max(200)).max(20),
   parallel: z.boolean(),
   mode: z.enum(['pipeline', 'agent']),
+  routing: z.partialRecord(z.enum(CATEGORIES), z.array(z.string()).max(5)).default({}),
+  skills: z.array(z.string().max(300)).max(50).default([]),
 });
 
 const TYPES: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json' };

@@ -1,8 +1,10 @@
 import { z } from 'zod';
+import { CATEGORIES } from './types.ts';
 
 export const Handoff = z.object({
   task_id: z.string(),
   role: z.enum(['coder', 'tester', 'docs']),
+  category: z.enum(CATEGORIES),
   goal: z.string(),
   files: z.array(z.string()),
   context: z.string(),
