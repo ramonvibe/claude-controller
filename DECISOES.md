@@ -161,3 +161,11 @@ Princípio, nas suas palavras: o mais importante é o pedido ser entregue, entã
 - **Tela limpa.** O Início mostra o pedido, os cards compactos (papel, modelo, tipo de preço, status e tokens), a linha do tempo e um bloco de primeiros passos. A edição completa do card fica num modal. Workspace, modo, roteamento, revisão, mapa e skills ficam em Configurar. O feed bruto de eventos foi removido.
 - **Revisão por categoria.** O padrão é revisar todas as categorias menos docs.
 - **Mapa do repositório.** Um card barato ou grátis, escolhido em Configurar, escreve um resumo do projeto de até cerca de 800 tokens. O Opus planeja lendo esse resumo e só abre arquivos onde ele não basta. O resumo fica em cache pelo snapshot exato da árvore, então é refeito só quando o código muda. Se o mapa falhar, o Opus segue lendo o código.
+
+## Correção: o Conectar não abria o login
+
+- **Gemini CLI:** no modo `-p`, antes do login a CLI pergunta no stdin "Opening authentication page in your browser. Do you want to continue? [Y/n]". O app lançava o processo com o stdin fechado, então o login ficava parado nessa pergunta. Agora o app responde `y` e passa `--skip-trust`. Sem esse flag, a CLI sai com código 55 em diretório não confiável.
+- **Como a URL de login é capturada:** a Gemini CLI abre o login com o `xdg-open` do PATH. O app coloca na frente um `xdg-open` intermediário que grava a URL e repassa ao abridor real. Assim a página também mostra o link "Abrir página de login".
+- **Sem `DISPLAY`:** a CLI exige a autorização manual, que não funciona sem terminal. Por isso o app precisa rodar numa sessão gráfica.
+- **Verificado sem abrir navegador:** com um `xdg-open` falso, a CLI real chamou o abridor com `https://accounts.google.com/o/oauth2/v2/auth?...`. O login completo com o seu Google não foi testado.
+- **DeepSeek (`dsh`):** a aba do login era aberta depois da resposta do servidor, fora do clique, e o Firefox bloqueava como popup. Agora a aba é aberta no próprio clique e redirecionada depois que a resposta chega. Também aparece o link de reserva.

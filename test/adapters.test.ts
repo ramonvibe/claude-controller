@@ -142,3 +142,26 @@ test('connect: dsh login launches dsh web, returns its URL, and finishes when de
     await app.app.close();
   }
 });
+
+test('connect gemini: answers the consent prompt, passes --skip-trust, captures the login URL, ends connected', async () => {
+  const { startApp, collect } = await import('./helpers.ts');
+  const home = process.env.HOME;
+  const fakeHome = tmp();
+  process.env.HOME = fakeHome;
+  process.env.GEMINI_BIN = fileURLToPath(new URL('./fake-gemini.mjs', import.meta.url));
+  process.env.CC_REAL_OPENER = '/bin/true'; // never open a real browser in tests
+  chmodSync(process.env.GEMINI_BIN, 0o755);
+  const app = await startApp();
+  try {
+    const c = collect(app.port, (evs) => evs.some((e) => e.kind === 'connect' && e.payload.status !== 'waiting'), 15000);
+    await c.ready;
+    await app.api('POST', '/api/connect/gemini-cli');
+    const evs = (await c.done).filter((e) => e.kind === 'connect');
+    assert.ok(evs.some((e) => e.payload.status === 'waiting' && /accounts\.google\.com/.test(e.payload.url)), JSON.stringify(evs));
+    assert.equal(evs.at(-1).payload.status, 'ok', JSON.stringify(evs.at(-1)));
+  } finally {
+    process.env.HOME = home;
+    process.env.GEMINI_BIN = '/bin/false';
+    await app.app.close();
+  }
+});

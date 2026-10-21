@@ -1,7 +1,9 @@
 // "Conectar" for providers that log in through the browser with their own tool (dsh web, gemini-cli).
 // The app never sees the provider's credentials: it starts the provider's own login and waits for it to finish.
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { tmpdir } from 'node:os';
+import { mkdtempSync, writeFileSync, chmodSync, readFileSync, watch, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Store } from './db.ts';
 import type { Engine } from './engine.ts';
 import { capture } from './proc.ts';
@@ -32,9 +34,10 @@ export function connectRoutes(store: Store, engine: Engine): Route[] {
     emit(id, { status, detail });
   };
 
-  function launch(id: string, cmd: string, args: string[], env: NodeJS.ProcessEnv, onLine: (line: string, s: Session) => void, onExit: (code: number | null) => void) {
+  function launch(id: string, cmd: string, args: string[], env: NodeJS.ProcessEnv, onLine: (line: string, s: Session) => void, onExit: (code: number | null) => void, stdin?: string) {
     stop(id);
-    const child = spawn(cmd, args, { cwd: tmpdir(), env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(cmd, args, { cwd: tmpdir(), env, stdio: [stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'] });
+    if (stdin !== undefined) child.stdin!.end(stdin);
     const s: Session = { child, url: null, timer: setTimeout(() => done(id, 'timeout', 'login não concluído em 10 minutos'), LOGIN_TIMEOUT) };
     sessions.set(id, s);
     const read = (d: Buffer) => String(d).split('\n').forEach((l) => l.trim() && onLine(l, s));
@@ -63,17 +66,29 @@ export function connectRoutes(store: Store, engine: Engine): Route[] {
         }, (code) => done('dsh', 'error', `dsh web saiu (código ${code})`));
         setTimeout(() => !s.url && res({ url: null, message: 'dsh web não informou a URL; veja Diagnóstico.' }), 15_000);
       }),
-    // gemini-cli opens Google's login in the browser itself; a successful tiny prompt means the login is stored.
+    // gemini-cli headless asks "Do you want to continue? [Y/n]" on stdin, then opens Google's login with xdg-open.
+    // A pass-through xdg-open shim records that URL so the page can also show it as a link.
     'gemini-cli': async () => {
       const [cmd, pre] = geminiCmd();
-      launch('gemini-cli', cmd, [...pre, '-p', 'Reply with: ok', '-o', 'json'], GEMINI_ENV, (line, sess) => {
-        const m = URL_RE.exec(line);
-        if (m && /accounts\.google\.com|oauth/.test(m[0]) && !sess.url) {
-          sess.url = m[0];
-          emit('gemini-cli', { status: 'waiting', url: sess.url });
-        }
-      }, (code) => (code === 0 && geminiLoggedIn() ? done('gemini-cli', 'ok') : done('gemini-cli', 'error', `gemini saiu (código ${code}); se o navegador não abriu, rode "npx @google/gemini-cli" num terminal uma vez`)));
-      return { url: null, message: 'A Gemini CLI vai abrir o login do Google no navegador. Conclua lá; o card muda sozinho.' };
+      const shim = mkdtempSync(join(tmpdir(), 'cc-open-'));
+      const urlFile = join(shim, 'url');
+      let real = process.env.CC_REAL_OPENER ?? '';
+      if (!real)
+        try {
+          real = execFileSync('sh', ['-c', 'command -v xdg-open'], { encoding: 'utf8' }).trim();
+        } catch {}
+      writeFileSync(join(shim, 'xdg-open'), `#!/bin/sh\nprintf '%s' "$1" > '${urlFile}'\n${real ? `exec '${real}' "$@"` : 'exit 0'}\n`);
+      chmodSync(join(shim, 'xdg-open'), 0o755);
+      const sess = launch('gemini-cli', cmd, [...pre, '-p', 'Reply with: ok', '-o', 'json', '--skip-trust'], { ...GEMINI_ENV, PATH: `${shim}:${process.env.PATH}` }, () => {},
+        (code) => (code === 0 && geminiLoggedIn() ? done('gemini-cli', 'ok') : done('gemini-cli', 'error', `gemini saiu (código ${code})`)), 'y\n');
+      const w = watch(shim, () => {
+        if (!existsSync(urlFile) || sess.url) return;
+        sess.url = readFileSync(urlFile, 'utf8');
+        if (URL_RE.test(sess.url)) emit('gemini-cli', { status: 'waiting', url: sess.url });
+        w.close();
+      });
+      sess.child.on('exit', () => w.close());
+      return { url: null, message: real ? 'O login do Google vai abrir no seu navegador. Conclua lá; o card muda sozinho.' : 'xdg-open não encontrado: use o link que vai aparecer aqui.' };
     },
   };
 
