@@ -104,6 +104,16 @@ export class Engine {
     return { taskId, text, structured, ok: !error, error, code, usage };
   }
 
+  private detected: Promise<any[]> | null = null;
+  /** Detection is cached: it may spawn a CLI (and for dsh, a tiny model call). */
+  diagnostics(refresh = false) {
+    if (refresh || !this.detected)
+      this.detected = Promise.all(
+        [...this.adapters.values()].map(async (a) => ({ id: a.id, label: a.label, ...(await a.detect().catch((e) => ({ ok: false, version: null, auth: 'desconhecido', detail: String(e), capabilities: {} }))) })),
+      );
+    return this.detected;
+  }
+
   cancel(taskId: string) {
     this.running.get(taskId)?.abort();
     return this.running.has(taskId);

@@ -103,6 +103,7 @@ export function createApp(ctx: Ctx) {
     ['POST', /^\/api\/tasks\/([\w-]+)\/cancel$/, ({ params }) => ({ cancelled: engine.cancel(params[0]) })],
     ['GET', /^\/api\/runs$/, () => store.runs()],
     ['GET', /^\/api\/runs\/([\w-]+)$/, ({ params }) => store.run(params[0]) ?? Promise.reject(httpError(404, 'run não encontrado'))],
+    ['GET', /^\/api\/diagnostics$/, ({ query }) => engine.diagnostics(query.has('refresh'))],
     ['GET', /^\/api\/tasks\/([\w-]+)\/events$/, ({ params }) =>
       store.db.prepare('select * from events where task_id=? order by id').all(params[0])],
     ...(ctx.extraRoutes ?? []),
