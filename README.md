@@ -8,6 +8,8 @@ App web local que reparte um pedido de desenvolvimento entre vários modelos par
 
 O app usa o Claude Code já logado no terminal e não precisa de chave de API.
 
+- **Qualquer IA de terceiros**, grátis ou paga, pode assumir as tarefas menores: OpenRouter, Gemini, Groq, DeepSeek e outras.
+
 O maior ganho vem do **contexto enxuto**. Cada agente roda com o próprio system prompt e só as ferramentas de que precisa. Uma chamada mínima cai de cerca de 25 mil para cerca de 600 tokens de contexto base.
 
 ## Requisitos
@@ -54,6 +56,29 @@ O estado chega pelo WebSocket. Ao recarregar a página, ele é reconstruído a p
 
 O topo da página mostra os **tokens de Opus**, que são a métrica principal, e o uso da cota de 5h e de 7d informado pelo Claude Code. O painel **Execuções** mostra, por run, os tokens e o custo de lista de cada agente e modelo.
 
+## Modelos substitutos (para poupar o Claude)
+
+Abra **Provedores**. A página tem duas partes:
+
+- **Com login próprio:**
+  - **DeepSeek via `dsh`** (free): o botão **Conectar** abre a página de login do `dsh web` e o app confere sozinho quando o login terminou.
+  - **Gemini CLI** (free, login Google): o botão **Instalar** instala a CLI, e **Conectar** abre o login do Google pela própria CLI.
+  - **Claude Code** (assinatura): use `claude auth login`.
+- **Via API:** escolha um provedor no catálogo, marcado como **(free)** ou **(paga)**. Coloque a chave no arquivo `.env` desta pasta (por exemplo `OPENROUTER_API_KEY=...`). Depois clique em **Verificar e buscar modelos** e marque os modelos. No OpenRouter, os modelos `:free` aparecem como free.
+
+Modelos de API leem e editam arquivos por um loop de ferramentas. As regras são as mesmas dos agentes Claude: só dentro do workspace, sem acesso a `.env` e segredos, sem commit e só com os comandos de teste.
+
+Na tela principal, a tabela **Quem faz cada tipo de tarefa** define, por categoria, o card e o reserva. O Opus classifica cada tarefa em uma destas categorias: arquitetura, feature, mudança pequena, testes ou documentação. Exemplo:
+
+| Categoria | Card |
+|---|---|
+| Arquitetura | Opus high |
+| Feature | Haiku medium |
+| Mudança pequena | um modelo free do OpenRouter |
+| Docs | DeepSeek |
+
+**Skills padrão:** marque as skills que valem para todos os agentes. O app lista as suas skills do Claude Code e mostra quantos tokens cada uma custa por chamada. Cada card pode usar uma lista própria.
+
 ## Como funciona
 
 - **Pipeline** (padrão):
@@ -84,6 +109,8 @@ O DeepSeek aparece como **"não autenticado"** enquanto o modo headless do `dsh`
 | `CC_DATA` | Pasta do banco SQLite e das configs MCP temporárias (padrão `./data`) |
 | `CLAUDE_BIN`, `DSH_BIN` | Caminhos alternativos das CLIs |
 | `GITHUB_TOKEN` | Habilita o preset MCP do GitHub |
+| `CC_ENV_FILE` | Arquivo de chaves dos provedores via API (padrão `./.env`) |
+| `GEMINI_BIN` | Caminho da Gemini CLI (sem ele, o app usa `npx @google/gemini-cli@0.65.0`) |
 | `DSH_PERMISSION_MODE` | Modo do sandbox do `dsh` (padrão do `dsh`: `workspace-write`) |
 
 ## Testes

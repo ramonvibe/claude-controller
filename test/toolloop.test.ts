@@ -21,7 +21,7 @@ async function fakeApi(steps: any[]) {
     );
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
-  return { url: `http://127.0.0.1:${(server.address() as any).port}/v1`, requests, close: () => server.close() };
+  return { url: `http://127.0.0.1:${(server.address() as any).port}/v1`, requests, close: () => (server.closeAllConnections(), server.close()) };
 }
 
 const call = (id: string, name: string, args: object) => ({ id, type: 'function', function: { name, arguments: JSON.stringify(args) } });
