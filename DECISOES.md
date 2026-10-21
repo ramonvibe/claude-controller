@@ -2,6 +2,21 @@
 
 Registro de fatos verificados e desvios em relação ao PLANO.md. Cada fixture citado fica em `fixtures/`.
 
+## Respostas da seção 9 do PLANO.md
+
+1. **DeepSeek:** login com conta Google pelo `dsh web`, sem chave de API. O resultado do modo headless está na fase 0 e na fase 5.
+2. **Modelo DeepSeek padrão:** `deepseek-flash`. Quando não há preço, a UI mostra "sem preço". O adapter HTTP direto ficou fora do escopo.
+3. **Métrica principal:** tokens de Opus. O custo de lista é secundário.
+4. **Permissões:**
+   - Permitido sem perguntar: ler e editar o workspace, rodar os comandos de teste e `git diff`, `git status` e `git log`.
+   - Proibido sempre: `git commit`, `git push`, `rm` recursivo, `.env` e segredos, e `bypassPermissions`.
+5. **Um workspace por vez.** As tarefas rodam em sequência; o paralelo fica atrás de uma opção desligada.
+6. **Agentes enxutos por padrão** (`inheritUserConfig: false`), com um toggle por card.
+7. **Modo padrão:** pipeline. O modo agente (MCP `orq`) é opcional.
+8. **Sem bench e sem página "Economia".** A coleta de tokens por agente continua.
+9. **Uso pessoal.** A instalação é `npm i && npm start`, sem publicação no npm.
+10. **Sonnet** entra no seletor de modelo, sem papel padrão.
+
 ## Fase 0: sondagem (21/10/2026)
 
 ### Claude Code 2.1.306

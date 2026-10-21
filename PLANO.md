@@ -1,5 +1,7 @@
 # Claude Controller — Plano
 
+> As respostas da seção 9 e os desvios encontrados na implementação estão em `DECISOES.md`.
+
 App web local que orquestra vários modelos num mesmo fluxo de desenvolvimento. O Opus planeja e decide, o Haiku codifica e o DeepSeek (via `dsh`) pega o que for delegável. Tudo roda com o Claude Code já autenticado no terminal.
 
 ## 0. O que foi verificado nesta máquina (21/10/2026)
@@ -39,7 +41,7 @@ Cada chamada padrão carrega uns **25 mil tokens de contexto base**. A configura
 
 ```
 ┌────────────── Navegador (localhost) ──────────────┐
-│  Grade de cards (+)   Painel de atividade   Economia│
+│  Grade de cards (+)   Painel de atividade   Diagnóst.│
 └───────────▲ REST (config)        ▲ WebSocket (eventos)
             │                      │
 ┌───────────┴──────────────────────┴────────────────┐
@@ -242,24 +244,7 @@ O backend gera um arquivo `--mcp-config` por agente e usa `--strict-mcp-config`.
 - **DeepSeek (`dsh`):** os pacotes têm `dsh-token-meter` e campos `inputTokens`/`outputTokens`, mas o formato dos eventos `--json` precisa ser confirmado na fase 0. Se não vier uso, o adapter estima por contagem de caracteres e marca `source: "estimado"`.
 - Os tokens ficam separados por tipo (input, output, cache read, cache create), porque o preço de cada um é bem diferente.
 
-**Bench** (`bench/`):
-
-- Use um repositório-fixture pequeno com 5 tarefas e critérios de aceite executáveis. Exemplos: adicionar uma flag de CLI, corrigir um bug com teste falhando, refatorar uma função, escrever uma seção de README, criar testes para um módulo.
-- Cada tarefa roda em **três modos**, cada um numa cópia limpa do fixture:
-  1. `baseline-opus`: um único `claude -p --model opus` padrão, que é como você trabalha hoje.
-  2. `baseline-opus-lean`: o mesmo, mas com os flags enxutos. Este modo separa quanto da economia vem do contexto enxuto e quanto vem da orquestração.
-  3. `orchestrated`: o pipeline completo.
-- Cada combinação roda 3 vezes, porque a variância é alta.
-- **Só conta economia de execução que passou nos critérios de aceite.** Uma execução barata que falhou entra no relatório como falha.
-
-**Relatório** (na página "Economia" e em `bench/report.md`):
-
-- Tokens por modelo e custo pela tabela de lista, com média e faixa.
-- **Tokens de Opus** em destaque, porque é a cota mais escassa no plano Pro.
-- Tempo total e taxa de sucesso.
-- Economia relativa: `orchestrated` contra cada baseline.
-
-`costUSD` vem com `costBasis: "list"`. É o preço de API equivalente, não o que o plano Pro cobra. Ele serve de proxy para comparar modos, não de conta.
+**Bench e página "Economia": removidos (decisão 8).** A coleta de tokens por agente continua e aparece nos cards e no resumo de cada run. A métrica principal são os tokens de Opus (decisão 3).
 
 ## 7. Fases e critério de "pronto"
 
@@ -267,12 +252,11 @@ O backend gera um arquivo `--mcp-config` por agente e usa `--strict-mcp-config`.
 |---|---|---|
 | **0. Sondagem** | Script `detect` + fixtures de saída gravadas | Formato de eventos `stream-json` documentado (incluindo se exige `--verbose`), evento final com `modelUsage` confirmado, `opus` resolvendo para `claude-opus-5-5`, eventos `dsh --json` gravados, método de autenticação do `dsh headless` confirmado |
 | **1. Núcleo + adapter Claude** | Backend, SQLite, `claude-cli` adapter, WebSocket | `POST /tasks` roda um agente; eventos aparecem no WS; `Usage` salvo bate com `modelUsage`; cancelar mata o processo |
-| **2. UI** | Grade de cards (+), seletores de modelo/tipo/MCP, painel de atividade | Criar 3 cards, rodar um prompt e ver saída, tarefa atual e tokens por card ao vivo; config persiste ao reiniciar |
-| **3. Orquestração** | Planejador com `--json-schema`, roteador, revisor, escalonamento | Uma tarefa do bench vai do pedido ao "pronto" com handoffs visíveis e tamanho de cada handoff exibido; teste forçado de `blocked` escala para o Opus |
+| **2. UI** | Grade de cards (+), seletores de modelo/tipo/MCP, painel de atividade | Criar 3 cards, rodar um prompt e ver saída, tarefa atual e tokens por card ao vivo; config persiste ao reiniciar; card verde do `started` até `result`/`error`, vários verdes ao mesmo tempo, vermelho no erro até a próxima tarefa do agente, cinza quando ocioso; estado só por WebSocket (sem polling) e reconstruído ao recarregar |
+| **3. Orquestração** | Planejador com `--json-schema`, roteador, revisor, escalonamento | Um pedido real vai do pedido ao "pronto" com handoffs visíveis e tamanho de cada handoff exibido; teste forçado de `blocked` escala para o Opus |
 | **4. MCP `orq` + presets** | Servidor MCP, geração de `--mcp-config`, medição de `schemaTokens` | Opus em modo agente chama `delegate_task` e recebe só o resumo; `claude mcp list` do usuário continua igual |
 | **5. Adapter `dsh`** | `dsh-headless` adapter | Card "Docs/DeepSeek" executa tarefa real; adapter entrou sem alterar arquivos do núcleo (teste de contrato com fixtures) |
-| **6. Bench** | `bench/` + página Economia | 5 tarefas × 3 modos × 3 repetições rodadas; relatório gerado |
-| **7. Empacotamento** | `bin`, README, página Diagnóstico | Em um clone limpo: `npm i && npm start` abre a UI; Diagnóstico mostra versão, login e capacidades detectadas |
+| **7. Empacotamento** | README, página Diagnóstico (sem publicação no npm, decisão 9) | Em um clone limpo: `npm i && npm start` abre a UI; Diagnóstico mostra versão, login e capacidades detectadas |
 
 ## 8. Riscos e limitações
 
