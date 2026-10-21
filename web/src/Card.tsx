@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { MODEL_LABELS, ROLE_LABELS, fmtTokens, fmtUsd } from './api.ts';
 import type { CardStatus } from './status.ts';
+import { tierTag } from './Providers.tsx';
 
 export type UsageRow = { agentId: string; model: string; input: number; output: number; cacheRead: number; cacheCreate: number; costUsd: number | null; priced: number };
 
@@ -8,7 +9,7 @@ const STATUS_LABEL: Record<CardStatus, string> = { running: 'Executando', error:
 
 type Props = {
   agent: any;
-  providers: { id: string; label: string; models: string[] }[];
+  providers: { id: string; label: string; models: string[]; tier?: string | null; modelTiers?: Record<string, string> }[];
   mcps: { id: string; label: string; kind: string; providers: string[]; available: boolean; schemaTokens: number | null }[];
   status: CardStatus;
   activity?: string;
@@ -47,9 +48,9 @@ export function Card({ agent, providers, mcps, status, activity, usage, canRun, 
           }}
         >
           {providers.map((p) => (
-            <optgroup key={p.id} label={p.label}>
+            <optgroup key={p.id} label={`${p.label} ${tierTag(p.tier)}`}>
               {p.models.map((m) => (
-                <option key={m} value={`${p.id}|${m}`}>{MODEL_LABELS[m] ?? m}</option>
+                <option key={m} value={`${p.id}|${m}`}>{MODEL_LABELS[m] ?? m} {p.modelTiers?.[m] ? tierTag(p.modelTiers[m]) : ''}</option>
               ))}
             </optgroup>
           ))}

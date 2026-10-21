@@ -66,3 +66,8 @@ export function capture(cmd: string, args: string[], timeoutMs = 20000): Promise
     });
   });
 }
+
+/** HEAD of the workspace repo ('' when not a git repo): adapters without our allowlist detect commits by comparing it. */
+export async function gitHead(cwd: string) {
+  return (await capture('git', ['-C', cwd, 'rev-parse', '-q', 'HEAD'])).out.trim();
+}

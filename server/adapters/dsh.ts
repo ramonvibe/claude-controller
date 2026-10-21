@@ -1,7 +1,7 @@
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ndjson, capture } from '../proc.ts';
+import { ndjson, capture, gitHead } from '../proc.ts';
 import { estimateTokens } from '../handoff.ts';
 import type { Adapter, AdapterEvent, Detect, RunInput } from '../types.ts';
 
@@ -49,8 +49,6 @@ export function mapDshEvent(o: any, model: string): AdapterEvent[] {
   }
   return out;
 }
-
-const gitHead = async (cwd: string) => (await capture('git', ['-C', cwd, 'rev-parse', '-q', 'HEAD'])).out.trim();
 
 const dsh: Adapter = {
   id: 'dsh',

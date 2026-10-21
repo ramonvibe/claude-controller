@@ -35,7 +35,7 @@ export type Usage = {
   cacheRead: number;
   cacheCreate: number;
   costUsd: number | null; // null = no price known
-  source: 'claude-json' | 'dsh-events' | 'estimado';
+  source: 'claude-json' | 'dsh-events' | 'api' | 'estimado';
 };
 
 /** Events an adapter yields while running one task. */
@@ -73,6 +73,8 @@ export type Adapter = {
   external: boolean; // non-Claude providers never get `sensitive` tasks
   models: string[];
   supportsSchema: boolean;
+  tier?: string; // free | paga | por modelo | assinatura
+  modelTiers?: Record<string, string>;
   detect(): Promise<Detect>;
   run(input: RunInput): AsyncIterable<AdapterEvent>;
 };
@@ -84,6 +86,6 @@ export type BusEvent = {
   runId: string | null;
   taskId: string | null;
   agentId: string | null;
-  kind: AdapterEvent['kind'] | 'started' | 'handoff' | 'run_started' | 'run_done' | 'agents_changed';
+  kind: AdapterEvent['kind'] | 'started' | 'handoff' | 'run_started' | 'run_done' | 'agents_changed' | 'connect';
   payload: any;
 };

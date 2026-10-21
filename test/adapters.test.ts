@@ -23,7 +23,7 @@ async function collectRun(cwd: string) {
 
 test('contract: every adapter file is loaded and implements the Adapter shape', async () => {
   const adapters = await loadAdapters();
-  assert.deepEqual([...adapters.keys()].sort(), ['claude-cli', 'dsh']);
+  assert.deepEqual([...adapters.keys()].sort(), ['claude-cli', 'dsh', 'gemini-cli']);
   for (const a of adapters.values()) {
     assert.equal(typeof a.label, 'string');
     assert.ok(Array.isArray(a.models) && a.models.length > 0);
@@ -99,6 +99,45 @@ test('dsh: unauthenticated run in the pipeline falls back to the Claude coder', 
     assert.ok(evs.some((e) => e.kind === 'error' && e.agentId === docsAgent.id && e.payload.code === 'ACCOUNT_SIGN_IN_REQUIRED'));
     assert.ok(evs.some((e) => e.kind === 'handoff' && e.payload.reason === 'fallback de provedor'));
     assert.equal(evs.find((e) => e.kind === 'run_done').payload.status, 'done');
+  } finally {
+    await app.app.close();
+  }
+});
+
+test('gemini: stream-json mapping (doc shapes) and no run without login', async () => {
+  const { mapGeminiEvent, default: gem } = await import('../server/adapters/gemini.ts');
+  const evs = [
+    { type: 'init', model: 'gemini-x' },
+    { type: 'message', role: 'assistant', content: 'oi' },
+    { type: 'tool_use', tool_name: 'write_file', parameters: { file_path: 'a' } },
+    { type: 'result', status: 'success', stats: { input_tokens: 50, output_tokens: 5, cached: 10 } },
+  ].flatMap(mapGeminiEvent);
+  assert.deepEqual(evs.map((e) => e.kind), ['status', 'delta', 'tool_use', 'usage']);
+  assert.deepEqual([(evs[3] as any).input, (evs[3] as any).cacheRead, (evs[3] as any).costUsd], [40, 10, 0]);
+  const home = process.env.HOME;
+  process.env.HOME = tmp(); // no ~/.gemini/oauth_creds.json here
+  try {
+    const out: any[] = [];
+    for await (const e of gem.run({ agent, prompt: 'x', systemPrompt: 'y', rules: [], cwd: tmp(), signal: new AbortController().signal })) out.push(e);
+    assert.equal(out[0].code, 'ACCOUNT_SIGN_IN_REQUIRED');
+  } finally {
+    process.env.HOME = home;
+  }
+});
+
+test('connect: dsh login launches dsh web, returns its URL, and finishes when detect turns ok', async () => {
+  const { startApp } = await import('./helpers.ts');
+  const app = await startApp();
+  try {
+    process.env.FAKE_DSH = 'web';
+    const list = await app.api('GET', '/api/connect');
+    assert.deepEqual(list.map((c: any) => [c.id, c.tier]), [['claude-cli', 'assinatura'], ['dsh', 'free'], ['gemini-cli', 'free']]);
+    const r = await app.api('POST', '/api/connect/dsh');
+    assert.match(r.url, /^http:\/\/127\.0\.0\.1:\d+\/\?token=/);
+    assert.equal((await app.api('GET', '/api/connect')).find((c: any) => c.id === 'dsh').pending, true);
+    await app.api('POST', '/api/connect/dsh/stop');
+    assert.equal((await app.api('GET', '/api/connect')).find((c: any) => c.id === 'dsh').pending, false);
+    await assert.rejects(app.api('POST', '/api/connect/claude-cli'), /claude auth login/);
   } finally {
     await app.app.close();
   }

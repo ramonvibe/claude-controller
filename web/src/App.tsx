@@ -5,11 +5,13 @@ import { Card, type UsageRow } from './Card.tsx';
 import { Activity } from './Activity.tsx';
 import { Diagnostics } from './Diagnostics.tsx';
 import { Routing } from './Routing.tsx';
+import { Providers } from './Providers.tsx';
+import { Connectors } from './Connectors.tsx';
 
 type Snapshot = {
   agents: any[];
   settings: { workspace: string | null; testCommands: string[]; parallel: boolean; mode: 'pipeline' | 'agent'; routing: Record<string, string[]>; skills: string[] };
-  providers: { id: string; label: string; models: string[]; external: boolean }[];
+  providers: { id: string; label: string; models: string[]; external: boolean; tier?: string | null; modelTiers?: Record<string, string> }[];
   mcps?: { id: string; label: string; kind: string; providers: string[]; available: boolean; schemaTokens: number | null }[];
   usage: UsageRow[];
   live: any;
@@ -26,7 +28,7 @@ export function App() {
   const [usage, setUsage] = useState<UsageRow[]>([]);
   const [prompt, setPrompt] = useState('');
   const [err, setErr] = useState('');
-  const [view, setView] = useState<'main' | 'diag'>('main');
+  const [view, setView] = useState<'main' | 'diag' | 'providers'>('main');
   const [runsTick, setRunsTick] = useState(0);
   const refresh = useRef<() => void>(() => {});
 
@@ -82,6 +84,7 @@ export function App() {
 
   if (!snap) return <main className="loading">Conectando…</main>;
   if (view === 'diag') return <Diagnostics onBack={() => setView('main')} />;
+  if (view === 'providers') return <Providers onBack={() => { setView('main'); refresh.current(); }} connectors={<Connectors />} />;
 
   const opusTokens = usage.filter((u) => /opus/.test(u.model)).reduce((s, u) => s + u.input + u.output + u.cacheRead + u.cacheCreate, 0);
   const windows = snap.rateLimit?.unifiedWindows ?? {};
@@ -108,6 +111,7 @@ export function App() {
           ))}
           <span className="meter">{running} ativo(s)</span>
         </div>
+        <button className="link" onClick={() => setView('providers')}>Provedores</button>
         <button className="link" onClick={() => setView('diag')}>Diagnóstico</button>
       </header>
 

@@ -24,6 +24,7 @@ export class Store {
       create table if not exists usage (task_id text, run_id text, agent_id text, model text, input integer, output integer,
         cache_read integer, cache_create integer, cost_usd real, source text);
       create table if not exists notes (run_id text, ts integer, author text, text text);
+      create table if not exists providers (id text primary key, data text not null);
     `);
     // A previous process died mid-task: those tasks can never finish.
     this.db.exec(`update tasks set status='error', result='{"error":"processo reiniciado"}' where status='running'`);
@@ -56,6 +57,18 @@ export class Store {
 
   saveMcpTokens(v: Record<string, number>) {
     this.db.prepare(`insert into kv (key, value) values ('mcpTokens', ?) on conflict(key) do update set value=excluded.value`).run(JSON.stringify(v));
+  }
+
+  providers(): any[] {
+    return (this.db.prepare('select data from providers order by rowid').all() as { data: string }[]).map((r) => JSON.parse(r.data));
+  }
+
+  saveProvider(p: { id: string }) {
+    this.db.prepare('insert into providers (id, data) values (?, ?) on conflict(id) do update set data=excluded.data').run(p.id, JSON.stringify(p));
+  }
+
+  deleteProvider(id: string) {
+    this.db.prepare('delete from providers where id=?').run(id);
   }
 
   agents(): Agent[] {

@@ -10,6 +10,7 @@ import type { Engine } from './engine.ts';
 import { newId } from './engine.ts';
 import { parseAgent } from './agents.ts';
 import { CATEGORIES } from './types.ts';
+import { CLI_TIERS } from './catalog.ts';
 
 export type Ctx = { store: Store; engine: Engine; token: string; staticDir: string; extraRoutes?: Route[] };
 export type Route = [method: string, path: RegExp, handler: (req: Req) => Promise<unknown> | unknown];
@@ -65,7 +66,7 @@ export function createApp(ctx: Ctx) {
     ['GET', /^\/api\/state$/, () => ({
       agents: store.agents(),
       settings: store.settings(),
-      providers: [...engine.adapters.values()].map((a) => ({ id: a.id, label: a.label, models: a.models, external: a.external })),
+      providers: [...engine.adapters.values()].map((a) => ({ id: a.id, label: a.label, models: a.models, external: a.external, tier: a.tier ?? CLI_TIERS[a.id]?.tier ?? null, modelTiers: a.modelTiers ?? {} })),
       live: store.liveState(),
       usage: store.usageTotals(),
       rateLimit: engine.lastRateLimit,

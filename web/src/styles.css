@@ -143,3 +143,18 @@ label.check input { width: auto; }
 .routing td, .routing th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); }
 .routing td:first-child { width: 34%; }
 .routing p { margin: 0 0 8px; font-size: 12px; }
+.catalog { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.cat { text-align: left; display: flex; flex-direction: column; gap: 4px; padding: 10px; }
+.cat.sel { border-color: var(--accent); }
+.cat small { color: var(--muted); }
+.tier.free { color: var(--running); font-weight: 600; }
+.tier.paid { color: var(--muted); }
+.plist { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.plist li { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 6px; }
+.plist li button { margin-left: auto; }
+.draft .row { display: grid; grid-template-columns: 1fr 2fr 1fr; gap: 8px; }
+.draft pre { background: var(--surface-2); padding: 6px 8px; border-radius: 6px; }
+.steps { padding-left: 18px; margin: 0; }
+.models { max-height: 320px; overflow: auto; display: flex; flex-direction: column; gap: 3px; border: 1px solid var(--border); border-radius: 6px; padding: 6px; }
+.connectors { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }
+@media (max-width: 700px) { .draft .row { grid-template-columns: 1fr; } }

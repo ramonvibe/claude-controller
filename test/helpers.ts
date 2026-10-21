@@ -7,6 +7,7 @@ import WebSocket from 'ws';
 export const FAKE = fileURLToPath(new URL('./fake-claude.mjs', import.meta.url));
 chmodSync(FAKE, 0o755);
 chmodSync(fileURLToPath(new URL('./fake-dsh.mjs', import.meta.url)), 0o755);
+process.env.GEMINI_BIN ??= '/bin/false'; // tests never reach the network through npx
 process.env.DSH_BIN ??= fileURLToPath(new URL('./fake-dsh.mjs', import.meta.url)); // never spend real DeepSeek calls in tests
 process.env.CLAUDE_BIN = FAKE;
 
@@ -31,18 +32,21 @@ export async function startApp() {
   const { seedAgents } = await import('../server/agents.ts');
   const { createApp } = await import('../server/http.ts');
   const { Orchestrator, orqRoutes } = await import('../server/orchestrator.ts');
+  const { providerRoutes, registerProviders } = await import('../server/openai.ts');
+  const { connectRoutes } = await import('../server/connect.ts');
   const dir = tmp();
   const ws = join(dir, 'workspace');
   mkdirSync(ws);
   const store = new Store(join(dir, 'data'));
   const engine = new Engine(store, await loadAdapters(), join(dir, 'data'));
   seedAgents(store);
+  registerProviders(store, engine);
   store.saveSettings({ ...store.settings(), workspace: ws });
   const staticDir = join(dir, 'dist');
   mkdirSync(staticDir);
   writeFileSync(join(staticDir, 'index.html'), '<html><head></head><body>ui</body></html>');
   const orch = new Orchestrator(store, engine, dir);
-  const app = createApp({ store, engine, token: 'tok', staticDir, extraRoutes: orqRoutes(orch) });
+  const app = createApp({ store, engine, token: 'tok', staticDir, extraRoutes: [...orqRoutes(orch), ...providerRoutes(store, engine), ...connectRoutes(store, engine)] });
   const port = await app.listen(0);
   orch.endpoint = { url: `http://127.0.0.1:${port}`, token: 'tok' };
   const base = `http://127.0.0.1:${port}`;

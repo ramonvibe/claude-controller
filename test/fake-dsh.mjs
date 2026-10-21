@@ -8,6 +8,10 @@ if (args[0] === '--version') {
   console.log('0.2.1-rc.2');
   process.exit(0);
 }
+if (args.includes('web')) {
+  console.log('dsh web: http://127.0.0.1:45555/?token=fake');
+  setInterval(() => {}, 1000); // keep serving until killed
+} else {
 const stdin = fs.readFileSync(0, 'utf8');
 if (process.env.FAKE_DSH_LOG) fs.appendFileSync(process.env.FAKE_DSH_LOG, JSON.stringify({ args, stdin, patch: fs.readFileSync(args[args.indexOf('--patch') + 1], 'utf8') }) + '\n');
 const mode = process.env.FAKE_DSH ?? 'account-sign-in-required';
@@ -22,3 +26,4 @@ if (mode === 'ok' || mode === 'commit') {
 }
 process.stdout.write(fs.readFileSync(new URL(`../fixtures/dsh/${mode}.ndjson`, import.meta.url)));
 process.exit(1);
+}
