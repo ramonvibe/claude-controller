@@ -3,6 +3,8 @@ import { statSync } from 'node:fs';
 import type { Store } from './db.ts';
 import { commandsNote, roleRules, TEMPLATES } from './roles.ts';
 import { estimateTokens } from './handoff.ts';
+import { join } from 'node:path';
+import { resolveMcps, writeMcpConfig, type McpServerSpec } from './mcps.ts';
 import type { Adapter, Agent, Role, Usage } from './types.ts';
 
 export type ExecOpts = {
@@ -14,7 +16,7 @@ export type ExecOpts = {
   systemPrompt?: string;
   schema?: object;
   extraRules?: string[];
-  mcpConfigPath?: string;
+  extraServers?: Record<string, McpServerSpec>;
 };
 
 export type ExecResult = { taskId: string; text: string; structured: unknown; ok: boolean; error?: string; code?: string; usage: Usage[] };
@@ -27,9 +29,12 @@ export class Engine {
   running = new Map<string, AbortController>();
   lastRateLimit: unknown = null;
 
-  constructor(store: Store, adapters: Map<string, Adapter>) {
+  dataDir: string;
+
+  constructor(store: Store, adapters: Map<string, Adapter>, dataDir: string) {
     this.store = store;
     this.adapters = adapters;
+    this.dataDir = dataDir;
   }
 
   workspace(): string {
@@ -55,11 +60,15 @@ export class Engine {
     let structured: unknown;
     let error: string | undefined;
     let code: string | undefined;
+    let cfg: { path: string; remove: () => void } | null = null;
     try {
       const adapter = this.adapters.get(o.agent.provider);
       if (!adapter) throw new Error(`Provedor desconhecido: ${o.agent.provider}`);
       const settings = store.settings();
-      const rules = [...(o.agent.tools ?? roleRules(role, settings.testCommands)), ...(o.extraRules ?? [])];
+      const mcp = resolveMcps(o.agent.mcps, o.extraServers);
+      if (mcp.missing.length) store.emit({ ...base, kind: 'status', payload: { kind: 'status', text: `MCP indisponível (variável de ambiente ausente): ${mcp.missing.join(', ')}` } });
+      if (Object.keys(mcp.servers).length) cfg = writeMcpConfig(join(this.dataDir, 'mcp'), taskId, mcp.servers);
+      const rules = [...(o.agent.tools ?? roleRules(role, settings.testCommands)), ...mcp.rules, ...(o.extraRules ?? [])];
       for await (const ev of adapter.run({
         agent: o.agent,
         prompt: o.prompt,
@@ -67,7 +76,7 @@ export class Engine {
         rules,
         cwd: this.workspace(),
         schema: adapter.supportsSchema ? o.schema : undefined,
-        mcpConfigPath: o.mcpConfigPath,
+        mcpConfigPath: cfg?.path,
         signal: ctrl.signal,
       })) {
         if (ev.kind === 'result') {
@@ -92,6 +101,7 @@ export class Engine {
       error = e?.message ?? String(e);
     } finally {
       this.running.delete(taskId);
+      cfg?.remove();
     }
 
     if (error) {

@@ -4,11 +4,29 @@ import { api } from './api.ts';
 export function Diagnostics({ onBack }: { onBack: () => void }) {
   const [data, setData] = useState<any[] | null>(null);
   const [err, setErr] = useState('');
+  const [mcps, setMcps] = useState<any[]>([]);
+  const [measuring, setMeasuring] = useState<string | null>(null);
+  const loadMcps = () => api('GET', '/api/mcps').then(setMcps).catch((e) => setErr(e.message));
+  const measure = async (id: string) => {
+    setMeasuring(id);
+    setErr('');
+    try {
+      await api('POST', `/api/mcps/${id}/measure`);
+      await loadMcps();
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setMeasuring(null);
+    }
+  };
   const load = (refresh = false) => {
     setData(null);
     api('GET', `/api/diagnostics${refresh ? '?refresh=1' : ''}`).then(setData).catch((e) => setErr(e.message));
   };
-  useEffect(() => load(), []);
+  useEffect(() => {
+    load();
+    loadMcps();
+  }, []);
 
   return (
     <div className="app diag">
@@ -36,6 +54,24 @@ export function Diagnostics({ onBack }: { onBack: () => void }) {
           )}
         </section>
       ))}
+      <section className="card idle">
+        <h2>MCPs e allowlists</h2>
+        <p className="muted">Cada preset soma tokens a toda chamada do agente. A medição faz duas chamadas enxutas no Haiku, com e sem o preset, e usa o workspace atual.</p>
+        <table className="mcp-table">
+          <thead><tr><th>Preset</th><th>Tipo</th><th>Disponível</th><th>Tokens por chamada</th><th></th></tr></thead>
+          <tbody>
+            {mcps.map((m) => (
+              <tr key={m.id}>
+                <td>{m.label}</td>
+                <td>{m.kind === 'mcp' ? 'servidor MCP' : 'allowlist'}</td>
+                <td className={m.available ? 'ok' : 'bad'}>{m.available ? 'sim' : 'falta variável de ambiente'}</td>
+                <td>{m.schemaTokens ?? 'não medido'}</td>
+                <td><button disabled={!m.available || measuring !== null} onClick={() => measure(m.id)}>{measuring === m.id ? 'Medindo…' : 'Medir'}</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
     </div>
   );
 }

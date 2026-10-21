@@ -62,3 +62,11 @@ Registro de fatos verificados e desvios em relação ao PLANO.md. Cada fixture c
   O `npm test` passou no workspace e nenhum commit foi feito.
 - **Um revisor que falha (o processo, não a revisão) não trava o pipeline.** O resultado do executor é aceito, com a nota "revisor indisponível".
 - **Provedor desconhecido conta como externo.** Por isso, ele nunca recebe handoffs `sensitive`.
+
+## Fase 4: MCP `orq` e presets
+
+- **O `orq` é um servidor MCP stdio** (`mcp/orq.ts`) com as ferramentas `delegate_task`, `task_status`, `list_agents`, `notes_read` e `notes_write`. Cada uma só repassa a chamada ao backend (`/api/orq/<run>/…`, com o token), e o roteamento continua no backend.
+- **A config MCP é gerada por tarefa** em `data/mcp/<task>.json`, com modo `0600`, e é apagada no fim da tarefa. Sempre vai junto com `--strict-mcp-config`. O app nunca chama `claude mcp add`, e um teste garante isso.
+- **`MCP_TOOL_TIMEOUT`** é passado ao `claude` quando há MCP, porque o `delegate_task` bloqueia enquanto o sub-pipeline roda. A variável não aparece na `--help`, então não foi verificada; se for ignorada, não causa efeito nenhum. No run real, uma delegação de cerca de 25 s não estourou.
+- **Run real em modo agente** (o pedido `clamp`): o Opus chamou `mcp__orq__delegate_task` e recebeu só o resultado compacto. O Opus gastou 40,2k tokens, contra 17,8k no pipeline com um pedido de porte parecido, porque cada ida e volta de ferramenta reenvia o contexto do Opus. Isso confirma o pipeline como modo padrão (decisão 7).
+- **Medição de presets:** duas chamadas enxutas no Haiku, com e sem o preset. A allowlist `web-fetch` mediu 789 tokens por chamada. O preset `github` só aparece como disponível quando `GITHUB_TOKEN` existe no ambiente do backend.

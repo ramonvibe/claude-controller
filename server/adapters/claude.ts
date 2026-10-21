@@ -97,6 +97,8 @@ const claude: Adapter = {
       stdin: i.prompt,
       signal: i.signal,
       timeoutMs: i.agent.limits.timeoutSec * 1000,
+      // delegate_task blocks while a whole sub-pipeline runs; raise the MCP tool timeout (unverified in --help, harmless if ignored).
+      env: i.mcpConfigPath ? { ...process.env, MCP_TOOL_TIMEOUT: String(i.agent.limits.timeoutSec * 1000) } : undefined,
     })) {
       if ('json' in item) {
         for (const ev of mapClaudeEvent(item.json)) {

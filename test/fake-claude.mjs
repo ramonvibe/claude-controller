@@ -18,7 +18,9 @@ if (args[0] === 'auth') {
 }
 
 const stdin = fs.readFileSync(0, 'utf8');
-if (process.env.FAKE_LOG) fs.appendFileSync(process.env.FAKE_LOG, JSON.stringify({ args, stdin }) + '\n');
+const cfgPath = args.includes('--mcp-config') ? args[args.indexOf('--mcp-config') + 1] : null;
+const mcpConfig = cfgPath ? { mode: (fs.statSync(cfgPath).mode & 0o777).toString(8), ...JSON.parse(fs.readFileSync(cfgPath, 'utf8')) } : null;
+if (process.env.FAKE_LOG) fs.appendFileSync(process.env.FAKE_LOG, JSON.stringify({ args, stdin, mcpConfig, cfgPath }) + '\n');
 
 if (!process.env.FAKE_SCRIPT) {
   process.stdout.write(fs.readFileSync(new URL('../fixtures/claude/stream-tool.ndjson', import.meta.url)));

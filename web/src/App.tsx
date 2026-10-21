@@ -9,7 +9,7 @@ type Snapshot = {
   agents: any[];
   settings: { workspace: string | null; testCommands: string[]; parallel: boolean; mode: 'pipeline' | 'agent' };
   providers: { id: string; label: string; models: string[]; external: boolean }[];
-  mcps?: { id: string; label: string; kind: string; providers: string[]; schemaTokens: number | null }[];
+  mcps?: { id: string; label: string; kind: string; providers: string[]; available: boolean; schemaTokens: number | null }[];
   usage: UsageRow[];
   live: any;
   rateLimit: any;
@@ -30,8 +30,8 @@ export function App() {
   const refresh = useRef<() => void>(() => {});
 
   refresh.current = async () => {
-    const s = await api<Snapshot>('GET', '/api/state');
-    setSnap(s);
+    const [s, mcps] = await Promise.all([api<Snapshot>('GET', '/api/state'), api('GET', '/api/mcps')]);
+    setSnap({ ...s, mcps });
     setStatus(fromSnapshot(s.live));
     setUsage(s.usage);
   };

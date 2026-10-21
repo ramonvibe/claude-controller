@@ -136,3 +136,5 @@ label.check input { width: auto; }
   .settings { grid-template-columns: 1fr; }
   .prompt { flex-direction: column; }
 }
+.mcp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.mcp-table th, .mcp-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); }

@@ -33,7 +33,7 @@ export async function startApp() {
   const ws = join(dir, 'workspace');
   mkdirSync(ws);
   const store = new Store(join(dir, 'data'));
-  const engine = new Engine(store, await loadAdapters());
+  const engine = new Engine(store, await loadAdapters(), join(dir, 'data'));
   seedAgents(store);
   store.saveSettings({ ...store.settings(), workspace: ws });
   const staticDir = join(dir, 'dist');
@@ -42,6 +42,7 @@ export async function startApp() {
   const orch = new Orchestrator(store, engine, dir);
   const app = createApp({ store, engine, token: 'tok', staticDir, extraRoutes: orqRoutes(orch) });
   const port = await app.listen(0);
+  orch.endpoint = { url: `http://127.0.0.1:${port}`, token: 'tok' };
   const base = `http://127.0.0.1:${port}`;
   const api = async (method: string, path: string, body?: unknown) => {
     const r = await fetch(base + path, { method, headers: { 'x-token': 'tok', 'content-type': 'application/json' }, body: body && JSON.stringify(body) });

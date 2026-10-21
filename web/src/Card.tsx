@@ -9,7 +9,7 @@ const STATUS_LABEL: Record<CardStatus, string> = { running: 'Executando', error:
 type Props = {
   agent: any;
   providers: { id: string; label: string; models: string[] }[];
-  mcps: { id: string; label: string; kind: string; providers: string[]; schemaTokens: number | null }[];
+  mcps: { id: string; label: string; kind: string; providers: string[]; available: boolean; schemaTokens: number | null }[];
   status: CardStatus;
   activity?: string;
   usage: UsageRow[];
@@ -27,7 +27,7 @@ export function Card({ agent, providers, mcps, status, activity, usage, canRun, 
   const out = usage.reduce((s, u) => s + u.output, 0);
   const priced = usage.some((u) => u.priced);
   const cost = priced ? usage.reduce((s, u) => s + (u.costUsd ?? 0), 0) : null;
-  const available = mcps.filter((m) => m.providers.includes(agent.provider));
+  const available = mcps.filter((m) => m.providers.includes(agent.provider) && (m.available || agent.mcps.includes(m.id)));
 
   return (
     <article className={`card ${status}`} aria-label={`${agent.name}: ${STATUS_LABEL[status]}`}>

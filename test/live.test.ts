@@ -66,3 +66,45 @@ test('live: orchestrated run planner(Opus) → coder(Haiku) → reviewer(Haiku) 
     await app.app.close();
   }
 });
+
+test('live: agent mode — Opus delegates through the orq MCP server and gets compact results', { skip: !live, timeout: 900000 }, async () => {
+  const { startApp, collect } = await import('./helpers.ts');
+  process.env.CLAUDE_BIN = 'claude';
+  delete process.env.FAKE_SCRIPT;
+  process.env.DSH_BIN = '/nonexistent/dsh';
+  const app = await startApp();
+  try {
+    writeFileSync(join(app.ws, 'package.json'), JSON.stringify({ name: 'w', type: 'module', scripts: { test: 'node --test' } }));
+    execSync('git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -qm init', { cwd: app.ws });
+    await app.api('PUT', '/api/settings', { ...app.store.settings(), mode: 'agent' });
+    const c = collect(app.port, (evs) => evs.some((e) => e.kind === 'run_done'), 880000);
+    await c.ready;
+    const { runId } = await app.api('POST', '/api/runs', {
+      prompt: 'Crie `clamp(n, min, max)` em src/clamp.js (ESM, export nomeado) e test/clamp.test.js com node:test. `npm test` deve passar.',
+    });
+    const evs = await c.done;
+    const end = evs.find((e) => e.kind === 'run_done').payload;
+    const run = await app.api('GET', `/api/runs/${runId}`);
+    console.log(JSON.stringify(end, null, 1));
+    console.log(run.usage.map((u: any) => `${u.model}: in ${u.input} out ${u.output} cacheR ${u.cacheRead} cacheW ${u.cacheCreate} $${u.costUsd}`).join('\n'));
+    assert.ok(evs.some((e) => e.kind === 'tool_use' && e.payload.name === 'mcp__orq__delegate_task'), 'Opus used delegate_task');
+    assert.equal(end.status, 'done');
+    execSync('npm test', { cwd: app.ws });
+  } finally {
+    await app.app.close();
+  }
+});
+
+test('live: measure schema tokens of the web-fetch allowlist preset', { skip: !live, timeout: 300000 }, async () => {
+  const { startApp } = await import('./helpers.ts');
+  process.env.CLAUDE_BIN = 'claude';
+  delete process.env.FAKE_SCRIPT;
+  const app = await startApp();
+  try {
+    const r = await app.api('POST', '/api/mcps/web-fetch/measure');
+    console.log('web-fetch schemaTokens', r.schemaTokens);
+    assert.ok(r.schemaTokens > 0);
+  } finally {
+    await app.app.close();
+  }
+});

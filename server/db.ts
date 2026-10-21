@@ -49,6 +49,15 @@ export class Store {
     this.db.prepare(`insert into kv (key, value) values ('settings', ?) on conflict(key) do update set value=excluded.value`).run(JSON.stringify(s));
   }
 
+  mcpTokens(): Record<string, number> {
+    const row = this.db.prepare(`select value from kv where key='mcpTokens'`).get() as { value: string } | undefined;
+    return row ? JSON.parse(row.value) : {};
+  }
+
+  saveMcpTokens(v: Record<string, number>) {
+    this.db.prepare(`insert into kv (key, value) values ('mcpTokens', ?) on conflict(key) do update set value=excluded.value`).run(JSON.stringify(v));
+  }
+
   agents(): Agent[] {
     return (this.db.prepare('select data from agents order by pos, rowid').all() as { data: string }[]).map((r) => JSON.parse(r.data));
   }
