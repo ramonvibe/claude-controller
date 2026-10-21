@@ -40,7 +40,8 @@ Registro de fatos verificados e desvios em relação ao PLANO.md. Cada fixture c
 - **Paralelismo (decisão 5): a opção `parallel` vem desligada.** Quando ligada, handoffs sem arquivos em comum rodam ao mesmo tempo no mesmo workspace. O isolamento por worktree ficou fora. Juntar o resultado de uma worktree de volta exigiria commit, e commit é proibido aos agentes (decisão 4).
 - **Escalonamento:** quando o codificador devolve `blocked` ou estoura `maxReviewLoops`, o handoff vai para o agente Planejador (Opus). Ele roda com o template e as ferramentas de codificador, e o contexto enviado é só o handoff original, o último resumo e a nota do revisor.
 - **Permissões padrão (decisão 4):** sempre `--permission-mode dontAsk` com allowlist explícita. As negações fixas, que valem para todo agente, são:
-  - `Bash(git commit:*)`, `Bash(git push:*)`
-  - `Bash(rm -r:*)`, `Bash(rm -rf:*)`, `Bash(rm -fr:*)`
-  - `Read(**/.env*)`, `Read(**/*.pem)`, `Read(**/*.key)`
+  - `Bash(git commit)`, `Bash(git commit *)`, `Bash(git push)`, `Bash(git push *)`
+  - `Bash(rm -r *)`, `Bash(rm -rf *)`, `Bash(rm -fr *)`, `Bash(rm -R *)`
+  - `Read(**/.env*)`, `Edit(**/.env*)`, `Read(**/*.pem)`, `Read(**/*.key)`
+  - Verificado ao vivo (`test/live.test.ts`): `npm test` roda; a leitura de `.env` e o `git commit` são negados. Cada regra vai num argumento separado do argv, porque contém espaços.
   - `bypassPermissions` é rejeitado na validação do card.
