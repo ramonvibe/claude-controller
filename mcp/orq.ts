@@ -37,6 +37,20 @@ server.registerTool(
   async ({ handoff }) => text(await call('POST', `/api/orq/${run}/delegate`, { handoff })),
 );
 
+// One tool per tier: the tier fixes role and category, so the caller only writes the handoff body.
+// A tiers fetch failure must not kill the server: start with the fixed tools only.
+const tiers = await call('GET', `/api/orq/${run}/tiers`).catch((e) => (console.error('orq: tiers fetch failed:', e.message), []));
+for (const t of tiers) {
+  server.registerTool(
+    t.tool,
+    {
+      description: `${t.label}: ${t.hint}. Runs on: ${t.agents.join(', ') || 'automatic by role'}. Blocks until done and reviewed; returns compact result.`,
+      inputSchema: { handoff: Handoff.omit({ role: true, tier: true }) },
+    },
+    async ({ handoff }) => text(await call('POST', `/api/orq/${run}/delegate`, { handoff: { ...handoff, role: t.role, tier: t.id } })),
+  );
+}
+
 server.registerTool(
   'task_status',
   { description: 'Compact result of a task already delegated in this run.', inputSchema: { task_id: z.string() } },

@@ -61,7 +61,7 @@ test('tool loop: workspace-only tools, secrets/.git/commands denied, edits appli
     const c = collect(app.port, (evs) => evs.some((e) => e.kind === 'result' || e.kind === 'error'));
     await c.ready;
     await app.api('POST', '/api/tasks', { agentId: card.id, prompt: 'faça' });
-    const evs = await c.done;
+    const evs = (await c.done).filter((e) => !e.kind.startsWith('run_'));
     assert.equal(evs.at(-1).kind, 'result', JSON.stringify(evs.at(-1)));
     assert.equal(readFileSync(join(app.ws, 'a.txt'), 'utf8'), 'bye world');
     assert.ok(!existsSync(join(app.ws, '.git/hooks/x')));

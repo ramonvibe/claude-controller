@@ -164,6 +164,8 @@ Rotas registradas por `extraRoutes` (não estão em `server/http.ts`):
 | POST | `/api/connect/:id/stop` | Cancela o login. |
 | POST | `/api/connect/gemini-cli/install` | Instala a Gemini CLI. |
 
+Níveis de delegação (`server/tiers.ts`): `GET /api/orq/:runId/tiers` lista os níveis ativos com `id`, `tool`, `role`, `category` e `hint` (o `when`). O servidor MCP `orq` cria uma ferramenta dinâmica por nível ativo, nomeada por `toolName(id)` (`-` vira `_`). Cada ferramenta fixa papel e categoria, e o corpo do handoff vem do planejador. No modo pipeline, o mesmo nível vai no campo `tier` do handoff. `POST /api/orq/:runId/delegate` aceita `tier` no corpo, que sobrescreve o do handoff.
+
 WebSocket: `ws://<host>/ws?token=<token>`. O servidor recusa origem ou host diferente do loopback, ou token errado.
 Cada mensagem é um `BusEvent`: `{ id, ts, runId, taskId, agentId, kind, payload }`.
 

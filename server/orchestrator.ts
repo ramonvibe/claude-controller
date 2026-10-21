@@ -7,8 +7,9 @@ import { AGENT_MODE_PLANNER, MAPPER, TEMPLATES } from './roles.ts';
 import { snapshotTree } from './proc.ts';
 import { orqServer, PRESETS, resolveMcps, writeMcpConfig } from './mcps.ts';
 import claude from './adapters/claude.ts';
-import type { Agent } from './types.ts';
+import type { Agent, Tier } from './types.ts';
 import { CATEGORIES } from './types.ts';
+import { toolName } from './tiers.ts';
 import { httpError, type Route } from './http.ts';
 
 /** Roles worth sending to an external (non-Claude) provider first (PLANO.md §4, rule 2). */
@@ -39,16 +40,25 @@ export class Orchestrator {
     return this.engine.adapters.get(a.provider)?.external ?? true; // unknown provider: never trusted with sensitive work
   }
 
-  /** Ordered candidates for a handoff: role match, sensitive filter, external-first for delegable roles, coder fallback. */
+  private tier(id?: string): Tier | undefined {
+    return id ? this.store.settings().tiers.find((t) => t.id === id && t.enabled) : undefined;
+  }
+
+  /** Ordered candidates for a handoff: run override, tier cards, category route, role match, coder fallback. */
   route(h: Handoff, runId?: string): Agent[] {
     const all = this.enabled();
     const allowed = (a: Agent) => !h.sensitive || !this.external(a);
-    const override = runId ? this.overrides.get(runId)?.[h.category] : undefined;
-    const byCategory = [...(override ? [override] : []), ...(this.store.settings().routing[h.category] ?? [])].map((id) => all.find((a) => a.id === id)).filter((a): a is Agent => Boolean(a) && allowed(a!));
-    let c = all.filter((a) => a.role === h.role && allowed(a) && !byCategory.includes(a));
+    const tier = this.tier(h.tier);
+    const role = tier?.role ?? h.role;
+    const category = tier ? tier.category : h.category;
+    const override = runId ? this.overrides.get(runId)?.[category] : undefined;
+    const pick = (ids: string[]) => ids.map((id) => all.find((a) => a.id === id)).filter((a): a is Agent => Boolean(a) && allowed(a!));
+    const ordered: Agent[] = [];
+    for (const a of [...pick(override ? [override] : []), ...pick(tier?.agents ?? []), ...pick(this.store.settings().routing[category] ?? [])]) if (!ordered.includes(a)) ordered.push(a);
+    let c = all.filter((a) => a.role === role && allowed(a) && !ordered.includes(a));
     const busy = (a: Agent) => this.store.liveState().running.filter((t: any) => t.agentId === a.id).length;
-    c.sort((a, b) => (DELEGABLE.has(h.role) ? Number(this.external(b)) - Number(this.external(a)) : 0) || busy(a) - busy(b));
-    c = [...byCategory, ...c];
+    c.sort((a, b) => (DELEGABLE.has(role) ? Number(this.external(b)) - Number(this.external(a)) : 0) || busy(a) - busy(b));
+    c = [...ordered, ...c];
     for (const a of all) if (a.role === 'coder' && !c.includes(a) && allowed(a)) c.push(a);
     return c;
   }
@@ -124,19 +134,27 @@ export class Orchestrator {
     return r;
   }
 
-  private async handleInner(runId: string, h: Handoff): Promise<Result> {
-    const candidates = this.route(h, runId);
+  private async handleInner(runId: string, input: Handoff): Promise<Result> {
+    // A tier fixes role and category, so callers of the tier tools only write the handoff body.
+    let tier = this.tier(input.tier);
+    const fixed = (t: Tier | undefined, x: Handoff): Handoff => (t ? { ...x, tier: t.id, role: t.role, category: t.category } : x);
+    let h = fixed(tier, input);
+    let candidates = this.route(h, runId);
     if (!candidates.length) return fail(h, `Nenhum agente ativo para o papel ${h.role}.`);
-    const reviewer = this.store.settings().review[h.category] === false ? undefined : this.enabled('reviewer')[0];
+    const reviewerFor = (t: Tier | undefined) => ((t ? t.review : this.store.settings().review[h.category] !== false) ? this.enabled('reviewer')[0] : undefined);
+    let reviewer = reviewerFor(tier);
     let agent = candidates[0];
     let escalated = false;
     let note: string | null = null;
     let loops = 0;
-    const loopsMax = agent.limits.maxReviewLoops;
+    let loopsMax = agent.limits.maxReviewLoops;
+    let tierReason = '';
+    const seen = new Set(tier ? [tier.id] : []); // escalateTo cycles end at the planner
 
     for (let ci = 0; ; ) {
       if (this.cancelled.has(runId)) return fail(h, 'cancelado');
-      const reason = escalated ? 'escalonado ao Planejador' : note ? 'correção pedida pelo revisor' : ci > 0 ? 'fallback de provedor' : '';
+      const reason = escalated ? 'escalonado ao Planejador' : tierReason || (note ? 'correção pedida pelo revisor' : ci > 0 ? 'fallback de provedor' : '');
+      tierReason = '';
       const exec = await this.execHandoff(runId, agent, h, note, escalated, reason);
 
       if (!exec.ok && !escalated && ci + 1 < candidates.length && loops === 0) {
@@ -156,6 +174,21 @@ export class Orchestrator {
       }
       if (escalated && (result.status !== 'done' || loops > loopsMax)) return { ...result, status: 'failed', summary: note ?? result.summary };
       if (result.status !== 'done' || loops > loopsMax) {
+        const next = tier?.escalateTo && !seen.has(tier.escalateTo) ? this.tier(tier.escalateTo) : undefined;
+        const nextCandidates = next ? this.route(fixed(next, h), runId) : [];
+        if (next && nextCandidates.length) {
+          seen.add(next.id);
+          tier = next;
+          h = fixed(next, h);
+          candidates = nextCandidates;
+          reviewer = reviewerFor(next);
+          agent = candidates[0];
+          loopsMax = agent.limits.maxReviewLoops;
+          ci = 0;
+          loops = 0;
+          tierReason = `escalonado para ${next.id}`;
+          continue;
+        }
         agent = this.planner();
         escalated = true;
         loops = 0;
@@ -244,6 +277,10 @@ export async function preflight(orch: Orchestrator) {
     const reason = diag.find((d: any) => d.id === chain[0].provider)?.detail ?? 'provedor não encontrado';
     problems.push({ category, agent: { id: chain[0].id, name: chain[0].name, provider: chain[0].provider }, reason, alternative: alt ? { id: alt.id, name: alt.name, model: alt.model } : null });
   }
+  for (const t of orch.store.settings().tiers.filter((x) => x.enabled && x.agents.length)) {
+    const a = t.agents.map((id) => orch.store.agent(id)).find((x) => x?.enabled);
+    if (a && !ready(a)) problems.push({ category: `tier ${t.id}`, agent: { id: a.id, name: a.name, provider: a.provider }, reason: 'provedor não conectado', alternative: null });
+  }
   for (const role of ['planner', 'reviewer'] as const) {
     const a = orch.store.agents().find((x) => x.enabled && x.role === role);
     if (a && !ready(a)) problems.push({ category: role, agent: { id: a.id, name: a.name, provider: a.provider }, reason: 'provedor não conectado', alternative: null });
@@ -316,8 +353,28 @@ export function orqRoutes(orch: Orchestrator): Route[] {
       return PRESETS.map((p) => ({ id: p.id, label: p.label, kind: p.kind, providers: p.providers, available: !p.server || p.server() !== null, schemaTokens: tokens[p.id] ?? null }));
     }],
     ['POST', /^\/api\/mcps\/([\w-]+)\/measure$/, ({ params }) => measure(orch, params[0])],
-    ['POST', /^\/api\/orq\/([\w-]+)\/delegate$/, ({ params, body }) =>
-      orch.handle(runOf(params[0]), Handoff.parse(z.object({ handoff: z.unknown() }).parse(body).handoff))],
+    // One MCP tool per enabled tier: the tool fixes role and category, the planner writes the rest.
+    ['GET', /^\/api\/orq\/([\w-]+)\/tiers$/, ({ params }) => {
+      runOf(params[0]);
+      return orch.store.settings().tiers.filter((t) => t.enabled).map((t) => ({
+        id: t.id,
+        tool: toolName(t.id),
+        label: t.label,
+        hint: t.when,
+        role: t.role,
+        category: t.category,
+        review: t.review,
+        agents: t.agents.flatMap((id) => {
+          const a = orch.store.agent(id);
+          return a?.enabled ? [`${a.name} · ${a.model}`] : [];
+        }),
+      }));
+    }],
+    ['POST', /^\/api\/orq\/([\w-]+)\/delegate$/, ({ params, body }) => {
+      const b = z.object({ handoff: z.unknown(), tier: z.string().optional() }).parse(body);
+      const h = Handoff.parse(b.handoff);
+      return orch.handle(runOf(params[0]), b.tier ? { ...h, tier: b.tier } : h); // body tier overrides handoff.tier
+    }],
     ['GET', /^\/api\/orq\/([\w-]+)\/tasks\/([\w.-]+)$/, ({ params }) =>
       orch.results.get(runOf(params[0]))?.get(params[1]) ?? { task_id: params[1], status: 'unknown' }],
     ['GET', /^\/api\/orq\/([\w-]+)\/agents$/, () =>

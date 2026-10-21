@@ -143,6 +143,10 @@ label.check input { width: auto; }
 .routing td, .routing th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); }
 .routing td:first-child { width: 34%; }
 .routing p { margin: 0 0 8px; font-size: 12px; }
+.tiers td { vertical-align: top; }
+.tiers td:first-child { width: auto; }
+.tiers textarea { min-width: 180px; }
+.tier-add { display: flex; gap: 6px; margin-top: 8px; }
 .catalog { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; margin-bottom: 12px; }
 .cat { text-align: left; display: flex; flex-direction: column; gap: 4px; padding: 10px; }
 .cat.sel { border-color: var(--accent); }
@@ -204,3 +208,10 @@ details.routing summary h2 { display: inline; }
 .layout { grid-template-columns: 1fr 440px; }
 @media (max-width: 1000px) { .trace { position: static; max-height: none; } .kpis { grid-template-columns: 1fr 1fr 1fr; } }
 .panel.settings { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+
+.answer { margin: 8px 0; padding: 8px 10px; border-radius: var(--radius); border: 1px solid var(--border); border-left: 4px solid var(--accent); font-size: 13px; }
+.answer.done { border-left-color: var(--running); }
+.answer.error, .answer.cancelled { border-left-color: var(--error); }
+.answer ul { margin: 6px 0 0; padding-left: 0; list-style: none; }
+.answer li { margin: 4px 0; white-space: pre-wrap; }
+.answer .st { display: inline-block; width: 1.2em; }

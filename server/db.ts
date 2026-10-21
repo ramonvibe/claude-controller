@@ -3,8 +3,9 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
 import type { Agent, BusEvent, Settings, Usage } from './types.ts';
+import { CATEGORY_OF, DEFAULT_TIERS } from './tiers.ts';
 
-const DEFAULT_SETTINGS: Settings = { workspace: null, testCommands: ['npm test'], parallel: false, mode: 'pipeline', routing: {}, skills: [], review: { docs: false }, repoMap: null };
+const DEFAULT_SETTINGS: Settings = { workspace: null, testCommands: ['npm test'], parallel: false, mode: 'pipeline', routing: {}, skills: [], review: { docs: false }, repoMap: null, tiers: DEFAULT_TIERS };
 
 /** Cards saved by older versions lack newer fields. */
 const withDefaults = (a: Agent): Agent => ({ ...a, mcps: a.mcps ?? [], skills: a.skills === undefined ? null : a.skills, effort: a.effort ?? null });
@@ -51,7 +52,8 @@ export class Store {
 
   settings(): Settings {
     const row = this.db.prepare(`select value from kv where key='settings'`).get() as { value: string } | undefined;
-    return { ...DEFAULT_SETTINGS, ...(row ? JSON.parse(row.value) : {}) };
+    const s: Settings = { ...DEFAULT_SETTINGS, ...(row ? JSON.parse(row.value) : {}) };
+    return { ...s, tiers: s.tiers.map((t) => ({ ...t, category: t.category ?? CATEGORY_OF[t.role] })) };
   }
 
   saveSettings(s: Settings) {
@@ -100,6 +102,9 @@ export class Store {
   }
 
   createRun(id: string, prompt: string, mode: string) {
+    // One request at a time per workspace: parallel runs edit the same files and fight each other.
+    const busy: any = this.db.prepare(`select id from runs where status='running' limit 1`).get();
+    if (busy) throw Object.assign(new Error(`Já tem um pedido rodando (${busy.id}). Espere terminar ou cancele.`), { status: 409 });
     this.db.prepare(`insert into runs (id, prompt, mode, status, started_at) values (?,?,?,'running',?)`).run(id, prompt, mode, Date.now());
   }
 

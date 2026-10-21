@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { ROLES } from './types.ts';
-import type { Agent } from './types.ts';
+import type { Agent, Tier } from './types.ts';
 import type { Store } from './db.ts';
 import { newId } from './engine.ts';
 
@@ -37,14 +37,30 @@ export function seedAgents(store: Store) {
   const limits = { maxBudgetUsd: null, maxReviewLoops: 2, timeoutSec: 600 };
   const seed: Agent[] = [
     { id: newId(), name: 'Planejador', provider: 'claude-cli', model: 'opus', role: 'planner', effort: 'medium', limits, ...base },
-    { id: newId(), name: 'Codificador', provider: 'claude-cli', model: 'haiku', role: 'coder', effort: null, limits, ...base },
+    { id: newId(), name: 'Coder-Chief', provider: 'claude-cli', model: 'haiku', role: 'coder', effort: null, limits, ...base },
     { id: newId(), name: 'Revisor', provider: 'claude-cli', model: 'haiku', role: 'reviewer', effort: null, limits, ...base },
     { id: newId(), name: 'Docs (DeepSeek)', provider: 'dsh', model: 'deepseek-flash', role: 'docs', effort: null, limits, ...base },
+    { id: newId(), name: 'Coder-Major (DeepSeek)', provider: 'dsh', model: 'deepseek-v4-pro', role: 'coder', effort: null, limits, ...base, enabled: false },
+    { id: newId(), name: 'Coder-Minor (DeepSeek flash)', provider: 'dsh', model: 'deepseek-flash', role: 'coder', effort: null, limits, ...base, enabled: false },
   ];
   for (const a of seed) store.saveAgent(a);
-  const [planner, coder, , docs] = seed;
+  const [planner, chief, , docs, major, minor] = seed;
+  const tiers = store.settings().tiers.map((t: Tier) => {
+    if (t.id === 'coder-chief') return { ...t, agents: [chief.id] };
+    if (t.id === 'coder-major') return { ...t, agents: [major.id] };
+    if (t.id === 'coder-minor') return { ...t, agents: [minor.id] };
+    if (t.id === 'docs-writer') return { ...t, agents: [docs.id] };
+    return t;
+  });
   store.saveSettings({
     ...store.settings(),
-    routing: { architecture: [planner.id], feature: [coder.id], 'small-change': [coder.id], tests: [coder.id], docs: [docs.id, coder.id] },
+    routing: {
+      architecture: [chief.id, planner.id],
+      feature: [major.id, chief.id],
+      'small-change': [minor.id, major.id, chief.id],
+      tests: [chief.id],
+      docs: [docs.id, chief.id],
+    },
+    tiers,
   });
 }

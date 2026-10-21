@@ -13,6 +13,7 @@ export const Handoff = z.object({
   acceptance: z.array(z.string()),
   constraints: z.array(z.string()),
   sensitive: z.boolean(),
+  tier: z.string().optional(),
 });
 export type Handoff = z.infer<typeof Handoff>;
 

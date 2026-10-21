@@ -63,7 +63,7 @@ export function buildTrace(store: Store, engine: Engine, runId: string) {
   const opus = tasks.filter((t) => t.models.some((m) => /opus/.test(m))).reduce((s, t) => s + total(t.tokens), 0);
   const summary = json(run.summary);
   return {
-    run: { id: run.id, prompt: run.prompt, mode: run.mode, status: run.status, startedAt: run.started_at, endedAt: run.ended_at, summary: summary?.summary ?? null },
+    run: { id: run.id, prompt: run.prompt, mode: run.mode, status: run.status, startedAt: run.started_at, endedAt: run.ended_at, summary: summary?.summary ?? null, results: summary?.results ?? [] },
     totals: {
       claudeTokens: sum(claude),
       outsideTokens: sum(outside), // tokens Claude did not have to process

@@ -6,6 +6,7 @@ import { CompactCard } from './CompactCard.tsx';
 import { RunTrace } from './RunTrace.tsx';
 import { Diagnostics } from './Diagnostics.tsx';
 import { Routing } from './Routing.tsx';
+import { Tiers, type Tier } from './Tiers.tsx';
 import { Providers } from './Providers.tsx';
 import { Connectors } from './Connectors.tsx';
 import { DefaultSkills, type SkillInfo } from './Skills.tsx';
@@ -13,7 +14,7 @@ import { Preflight } from './Preflight.tsx';
 
 type Snapshot = {
   agents: any[];
-  settings: { workspace: string | null; testCommands: string[]; parallel: boolean; mode: 'pipeline' | 'agent'; routing: Record<string, string[]>; skills: string[]; review?: Record<string, boolean>; repoMap?: string | null };
+  settings: { workspace: string | null; testCommands: string[]; parallel: boolean; mode: 'pipeline' | 'agent'; routing: Record<string, string[]>; skills: string[]; review?: Record<string, boolean>; tierHints?: Record<string, string>; repoMap?: string | null; tiers?: Tier[] };
   providers: { id: string; label: string; models: string[]; external: boolean; tier?: string | null; modelTiers?: Record<string, string> }[];
   mcps?: { id: string; label: string; kind: string; providers: string[]; available: boolean; schemaTokens: number | null }[];
   usage: UsageRow[];
@@ -37,10 +38,12 @@ export function App() {
   const [latestRun, setLatestRun] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [preflight, setPreflight] = useState<any[] | null>(null);
+  const [activeRun, setActiveRun] = useState<string | null>(null);
   const refresh = useRef<() => void>(() => {});
 
   refresh.current = async () => {
-    const [s, mcps, sk] = await Promise.all([api<Snapshot>('GET', '/api/state'), api('GET', '/api/mcps'), api<SkillInfo[]>('GET', '/api/skills')]);
+    const [s, mcps, sk, runs] = await Promise.all([api<Snapshot>('GET', '/api/state'), api('GET', '/api/mcps'), api<SkillInfo[]>('GET', '/api/skills'), api<any[]>('GET', '/api/runs')]);
+    setActiveRun(runs.find((r) => r.status === 'running')?.id ?? null);
     setSnap({ ...s, mcps });
     setSkills(sk);
     setStatus(fromSnapshot(s.live));
@@ -55,7 +58,15 @@ export function App() {
           if (ev.kind === 'agents_changed') refresh.current();
           if (ev.kind === 'rate_limit') setSnap((s) => s && { ...s, rateLimit: ev.payload.info });
           if (ev.kind === 'usage') setUsage((u) => [...u, { agentId: ev.agentId, ...ev.payload, priced: ev.payload.costUsd == null ? 0 : 1 }]);
-          if (ev.kind === 'run_started') setLatestRun(ev.runId);
+          if (ev.kind === 'run_started') {
+            setLatestRun(ev.runId);
+            setActiveRun(ev.runId);
+            document.title = '● Rodando · Claude Controller';
+          }
+          if (ev.kind === 'run_done') {
+            setActiveRun((r) => (r === ev.runId ? null : r));
+            document.title = `${ev.payload.status === 'done' ? '✓ Terminou' : '✗ Terminou com problemas'} · Claude Controller`;
+          }
           if (ev.runId && ev.kind !== 'delta') setTick((t) => t + 1);
           if (ev.agentId) {
             const line = ev.kind === 'delta' ? ev.payload.text : ev.kind === 'tool_use' ? `usando ${ev.payload.name}` : ev.kind === 'started' ? 'começou' : null;
@@ -159,8 +170,9 @@ export function App() {
               Paralelo (experimental)
             </label>
           </section>
-          <Routing routing={settings.routing} review={settings.review ?? {}} agents={snap.agents.filter((a) => a.enabled)}
-            onChange={(routing) => saveSettings({ routing })} onReview={(review) => saveSettings({ review })} />
+          <Routing routing={settings.routing} review={settings.review ?? {}} hints={settings.tierHints ?? {}} agents={snap.agents.filter((a) => a.enabled)}
+            onChange={(routing) => saveSettings({ routing })} onReview={(review) => saveSettings({ review })} onHints={(tierHints) => saveSettings({ tierHints })} />
+          <Tiers tiers={settings.tiers ?? []} agents={snap.agents.filter((a) => a.enabled)} onChange={(tiers) => saveSettings({ tiers })} />
           <DefaultSkills all={skills} value={settings.skills} onChange={(ids) => saveSettings({ skills: ids })} />
         </>
       ) : (
@@ -177,7 +189,11 @@ export function App() {
           )}
           <section className="prompt" aria-label="Pedido">
             <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="O que você quer construir ou corrigir?" rows={3} />
-            <button className="primary" disabled={!prompt.trim()} onClick={start}>Rodar</button>
+            {activeRun ? (
+              <button onClick={() => act(() => api('POST', `/api/runs/${activeRun}/cancel`))}>Rodando… Cancelar</button>
+            ) : (
+              <button className="primary" disabled={!prompt.trim()} onClick={start}>Rodar</button>
+            )}
           </section>
 
           <div className="layout">

@@ -34,7 +34,7 @@ test('pre-flight flags a disconnected first card and offers a connected alternat
     const pf = await app.api('GET', '/api/preflight');
     const docs = pf.problems.find((p: any) => p.category === 'docs');
     assert.equal(docs.agent.provider, 'dsh');
-    assert.equal(docs.alternative.name, 'Codificador');
+    assert.equal(docs.alternative.name, 'Coder-Chief');
     const c = collect(app.port, (evs) => evs.some((e) => e.kind === 'run_done'));
     await c.ready;
     const { runId } = await app.api('POST', '/api/runs', { prompt: 'docs', overrides: { docs: docs.alternative.id } });

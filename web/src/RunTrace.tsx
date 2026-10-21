@@ -58,6 +58,28 @@ function TaskRow({ t }: { t: any }) {
   );
 }
 
+const ENDING: Record<string, string> = { done: 'Terminou', error: 'Terminou com problemas', cancelled: 'Cancelado' };
+
+/** What the run delivered, in plain words: one line per task plus the files touched. */
+function Answer({ trace }: { trace: any }) {
+  const { run, tasks } = trace;
+  if (run.status === 'running') return <p className="answer running" role="status">● Rodando… {tasks.filter((t: any) => t.status === 'running').map((t: any) => t.agent.name).join(', ')}</p>;
+  // Pipeline/agent runs report one result per handoff; a single-agent run only has its task.
+  const items = run.results.length ? run.results : tasks.slice(-1).map((t: any) => ({ task_id: t.agent.name, status: t.status, summary: t.summary }));
+  const files = [...new Set(tasks.flatMap((t: any) => t.filesChanged))];
+  return (
+    <section className={`answer ${run.status}`} aria-label="Resposta">
+      <b>{STATUS[run.status] ?? ''} {ENDING[run.status] ?? run.status}</b>
+      <ul>
+        {items.map((r: any, i: number) => (
+          <li key={i}><span className="st">{r.status === 'done' ? '✓' : r.status === 'blocked' ? '⚠' : '✗'}</span> {r.summary || r.task_id}</li>
+        ))}
+      </ul>
+      {files.length > 0 && <p className="small"><b>Arquivos alterados:</b> {files.join(', ')}. Revise com <code>git diff</code> antes de commitar.</p>}
+    </section>
+  );
+}
+
 /** Timeline of a run, refreshed by WebSocket ticks. */
 export function RunTrace({ tick, latestRun }: { tick: number; latestRun: string | null }) {
   const [runs, setRuns] = useState<any[]>([]);
@@ -93,6 +115,7 @@ export function RunTrace({ tick, latestRun }: { tick: number; latestRun: string 
       </select>
       {trace && (
         <>
+          <Answer trace={trace} />
           <div className="kpis">
             <div><dt>Cota 5h</dt><dd>{q ? `${Math.round(q.before * 100)}% → ${Math.round(q.after * 100)}%` : '—'}</dd></div>
             <div><dt>Opus</dt><dd>{fmtTokens(tt.opusTokens)}</dd></div>

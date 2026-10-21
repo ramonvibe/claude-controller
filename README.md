@@ -79,6 +79,63 @@ Na tela principal, a tabela **Quem faz cada tipo de tarefa** define, por categor
 
 **Skills padrão:** marque as skills que valem para todos os agentes. O app lista as suas skills do Claude Code e mostra quantos tokens cada uma custa por chamada. Cada card pode usar uma lista própria.
 
+## Níveis de delegação
+
+Um nível de delegação é um canal com nome que o planejador (Opus) escolhe para cada tarefa, pelo menor custo que não erre. O nível já fixa papel e categoria, então o planejador só escreve o corpo do handoff. Assim o trabalho vai ao modelo certo sem o planejador escolher card por card.
+
+**Padrões** (`server/tiers.ts`). Todos vêm ligados, sem card fixo (automático por papel e categoria) e com revisão:
+
+| Nível (`id`) | Papel | Quando usar |
+|---|---|---|
+| `coder-chief` | coder | lógica complexa ou vital, que não pode falhar |
+| `coder-major` | coder | trabalho médio, seguindo o desenho existente |
+| `coder-minor` | coder | edição pequena, delimitada e mecânica, sem lógica |
+| `tester` | tester | escrever testes |
+| `docs-writer` | docs | documentação |
+
+Sugestão de card para os níveis de código: chief com Opus ou Haiku, major com DeepSeek, minor com um modelo free.
+
+**Editar em Configurar > Níveis de delegação.** Cada nível tem:
+
+- **Ativo:** nível desligado não entra na lista do planejador nem vira ferramenta MCP.
+- **Nome:** rótulo na tela.
+- **Ferramenta:** o `id` do nível. No MCP, `-` vira `_` (`coder-chief` → `coder_chief`).
+- **Papel** e **Categoria:** o handoff do nível herda os dois.
+- **Quando usar:** o texto que o planejador lê para escolher o nível (até 500 caracteres).
+- **Card** e **Reserva:** agentes na ordem, até 5; vazio = automático pelo papel e pela categoria.
+- **Revisão:** liga ou desliga a revisão só para esse nível.
+- **Adicionar nível** cria outro (até 12 no total); **Remover** apaga.
+
+**Regras do `id`:** começa com letra minúscula, seguida de letras minúsculas, números ou `-`, com até 31 caracteres. O `id` deve ser único. O servidor recusa o salvamento se não cumprir isso.
+
+**Ordem de fallback** (`Orchestrator.route`), para cada handoff:
+
+1. Substituição do preflight, só nesta execução.
+2. Agentes do nível, na ordem.
+3. Rota da categoria em Roteamento.
+4. Outros agentes do mesmo papel. Em papéis delegáveis, externos vêm primeiro; depois, os menos ocupados.
+5. Qualquer agente coder, como último recurso.
+
+Uma falha de provedor passa para o próximo candidato, mas só antes de qualquer revisão. Se o executor devolver `blocked` ou estourar o limite de revisões, a tarefa escala para o Planejador.
+
+**Tarefas sensíveis** nunca vão para provedores externos: esses agentes saem da lista em todas as etapas acima, e o nível cai para um agente não externo (Claude, no padrão).
+
+**Exemplo:** Planejador Opus; `coder-chief` Haiku; `coder-major` DeepSeek; `coder-minor` um modelo free (OpenRouter ou Gemini). O planejador manda o trivial para o free, o médio para o DeepSeek e só o complexo para o Haiku.
+
+### Ferramentas MCP dos níveis (modo agente)
+
+No modo agente, cada nível vira uma ferramenta do MCP orq. Os nomes são estes:
+
+| Nível | Ferramenta | Papel | Card padrão |
+|---|---|---|---|
+| `coder-chief` | `coder_chief` | arquitetura, código complexo ou vital | Haiku |
+| `coder-major` | `coder_major` | feature | DeepSeek |
+| `coder-minor` | `coder_minor` | mudança pequena | Gemini CLI (grátis) |
+
+**Ativar:** `coder-major` e `coder-minor` vêm desligados. Em **Configurar > Níveis de delegação**, marque **Ativo** na linha do nível.
+
+**Editar as dicas:** o texto de **Quando usar** é a dica que o planejador Opus lê para escolher o nível. Edite o texto nessa mesma tela e salve.
+
 ## Acompanhar e economizar
 
 - **Antes de rodar**, o app confere se as IAs escolhidas estão conectadas. Se alguma não estiver, ele pergunta antes de usar outra; nunca cai no Claude sem avisar.
@@ -135,6 +192,7 @@ LIVE=1 npm test  # chamadas reais ao Claude (alguns centavos de preço de lista)
 server/            backend (Node 24 roda .ts direto)
   adapters/        um arquivo por provedor; adicionar um provedor = adicionar um arquivo
   orchestrator.ts  pipeline, roteamento, revisão, escalonamento, modo agente
+  tiers.ts         níveis de delegação (card, reserva, revisão, ferramenta MCP)
   roles.ts         templates de papel e permissões
 mcp/orq.ts         servidor MCP próprio
 web/               UI (React + Vite)

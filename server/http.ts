@@ -6,6 +6,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import { z } from 'zod';
 import type { Store } from './db.ts';
+import { DEFAULT_TIERS } from './tiers.ts';
 import type { Engine } from './engine.ts';
 import { newId } from './engine.ts';
 import { parseAgent } from './agents.ts';
@@ -35,7 +36,18 @@ const SettingsInput = z.object({
   skills: z.array(z.string().max(300)).max(50).default([]),
   review: z.partialRecord(z.enum(CATEGORIES), z.boolean()).default({ docs: false }),
   repoMap: z.string().nullable().default(null),
-});
+  tiers: z.array(z.object({
+    id: z.string().regex(/^[a-z][a-z0-9-]{0,30}$/),
+    label: z.string().min(1).max(60),
+    role: z.enum(['coder', 'tester', 'docs']),
+    category: z.enum(CATEGORIES).default('feature'),
+    when: z.string().max(500),
+    agents: z.array(z.string()).max(5),
+    review: z.boolean().default(true),
+    enabled: z.boolean().default(true),
+    escalateTo: z.string().optional(),
+  })).max(12).default(DEFAULT_TIERS),
+}).refine((s) => new Set(s.tiers.map((t) => t.id)).size === s.tiers.length, { message: 'Duplicate tier id', path: ['tiers'] });
 
 const TYPES: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json' };
 
@@ -107,7 +119,12 @@ export function createApp(ctx: Ctx) {
       engine.workspace(); // fail fast, before creating the run
       const runId = newId();
       store.createRun(runId, prompt, 'single');
-      engine.execute({ runId, agent, prompt }).then((r) => store.endRun(runId, r.ok ? 'done' : 'error', { taskId: r.taskId }));
+      store.emit({ runId, taskId: null, agentId: null, kind: 'run_started', payload: { prompt, mode: 'single' } });
+      engine.execute({ runId, agent, prompt }).then((r) => {
+        const status = r.ok ? 'done' : 'error';
+        store.endRun(runId, status, { taskId: r.taskId });
+        store.emit({ runId, taskId: null, agentId: null, kind: 'run_done', payload: { status } });
+      });
       return { runId };
     }],
     ['POST', /^\/api\/tasks\/([\w-]+)\/cancel$/, ({ params }) => ({ cancelled: engine.cancel(params[0]) })],

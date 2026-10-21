@@ -20,12 +20,26 @@ export type Agent = {
 export const CATEGORIES = ['architecture', 'feature', 'small-change', 'tests', 'docs'] as const;
 export type Category = (typeof CATEGORIES)[number];
 
+/** Named delegation channel: the planner picks one per task to choose model cost. */
+export type Tier = {
+  id: string; // doubles as the MCP tool name (with '-' replaced by '_')
+  label: string;
+  role: 'coder' | 'tester' | 'docs';
+  when: string;
+  agents: string[]; // card ids, in order; empty = automatic by role/category
+  review: boolean;
+  enabled: boolean;
+  category: Category;
+  escalateTo?: string; // tier id tried before the planner when this tier fails
+};
+
 export type Settings = {
   workspace: string | null;
   testCommands: string[];
   parallel: boolean;
   mode: 'pipeline' | 'agent';
   routing: Partial<Record<Category, string[]>>; // category → agent ids, in order (primary, fallbacks)
+  tiers: Tier[]; // named delegation channels the planner can pick per task for model cost
   skills: string[]; // default skills for every agent
   review: Partial<Record<Category, boolean>>; // false = no reviewer for that category
   repoMap: string | null; // agent that writes the repository brief the planner reads first

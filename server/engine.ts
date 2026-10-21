@@ -3,6 +3,7 @@ import { statSync } from 'node:fs';
 import { snapshotTree } from './proc.ts';
 import type { Store } from './db.ts';
 import { commandsNote, roleRules, TEMPLATES } from './roles.ts';
+import { tiersNote } from './tiers.ts';
 import { estimateTokens } from './handoff.ts';
 import { join } from 'node:path';
 import { resolveMcps, writeMcpConfig, type McpServerSpec } from './mcps.ts';
@@ -79,6 +80,7 @@ export class Engine {
         prompt: o.prompt,
         systemPrompt:
           (o.systemPrompt ?? o.agent.systemPrompt ?? TEMPLATES[role]) +
+          (role === 'planner' && tiersNote(settings.tiers) ? `\n\n${tiersNote(settings.tiers)}` : '') +
           commandsNote(settings.testCommands) +
           skillsPrompt(o.agent.skills ?? settings.skills, listSkills(settings.workspace)),
         rules,

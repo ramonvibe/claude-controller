@@ -5,6 +5,7 @@ import { request } from 'node:http';
 import { fakeScript, startApp, collect } from './helpers.ts';
 import { claudeArgs, mapClaudeEvent } from '../server/adapters/claude.ts';
 import { DENY } from '../server/roles.ts';
+import { DEFAULT_TIERS, tiersNote } from '../server/tiers.ts';
 
 const fixture = (f: string) => readFileSync(new URL(`../fixtures/claude/${f}`, import.meta.url), 'utf8');
 
@@ -49,7 +50,9 @@ test('POST /api/tasks streams events over WS and stores usage equal to modelUsag
     const c = collect(port, (evs) => evs.some((e) => e.kind === 'result' || e.kind === 'error'));
     await c.ready;
     const { runId } = await api('POST', '/api/tasks', { agentId: coder.id, prompt: 'diga ok' });
-    const evs = await c.done;
+    const all = await c.done;
+    assert.equal(all[0].kind, 'run_started'); // lets the page lock Rodar and show the answer when run_done arrives
+    const evs = all.filter((e) => !e.kind.startsWith('run_'));
     assert.deepEqual(evs.map((e) => e.kind), ['started', 'status', 'delta', 'rate_limit', 'usage', 'result']);
     assert.ok(evs.every((e) => e.agentId === coder.id && e.runId === runId));
     const [u]: any = store.usageTotals(runId);
@@ -76,7 +79,7 @@ test('cancel kills the running process and ends the task with error', async () =
     assert.equal(state.live.running.length, 1);
     const t0 = Date.now();
     assert.deepEqual(await api('POST', `/api/tasks/${state.live.running[0].id}/cancel`), { cancelled: true });
-    const evs = await c.done;
+    const evs = (await c.done).filter((e) => !e.kind.startsWith('run_'));
     assert.ok(Date.now() - t0 < 5000);
     assert.match(evs.at(-1).payload.message, /cancelado/);
     assert.equal((await api('GET', '/api/state')).live.running.length, 0);
@@ -122,6 +125,48 @@ test('nonexistent workspace: rejected on save (400) and a stale one fails the ru
   }
 });
 
+test('settings: duplicate tier ids are rejected with 400', async () => {
+  const { api, store, app } = await startApp();
+  try {
+    const s = store.settings();
+    await assert.rejects(api('PUT', '/api/settings', { ...s, tiers: [s.tiers[0], s.tiers[0]] }), (e: any) => e.status === 400 && /Duplicate tier id/.test(e.message));
+  } finally {
+    await app.close();
+  }
+});
+
+test('settings: tier ids with spaces, uppercase or the reserved delegate_task name are rejected with 400', async () => {
+  const { api, store, app } = await startApp();
+  try {
+    const s = store.settings();
+    for (const id of ['Coder Chief', 'delegate_task']) {
+      await assert.rejects(api('PUT', '/api/settings', { ...s, tiers: [{ ...s.tiers[0], id }] }), (e: any) => e.status === 400, id);
+    }
+  } finally {
+    await app.close();
+  }
+});
+
+test('tiersNote: lists enabled tiers only, empty when none is enabled', () => {
+  const tiers = DEFAULT_TIERS.map((t) => (t.id === 'coder-minor' ? { ...t, enabled: false } : t));
+  const note = tiersNote(tiers);
+  assert.ok(!note.includes('coder-minor'));
+  assert.equal(note.split('\n').length, 4);
+  assert.match(note, /^- coder-chief \(coder\): /);
+  assert.equal(tiersNote(DEFAULT_TIERS.map((t) => ({ ...t, enabled: false }))), '');
+});
+
+test('settings stored without tiers come back with the 5 default tiers', async () => {
+  const { store, app } = await startApp();
+  try {
+    const { tiers, ...noTiers } = store.settings();
+    store.saveSettings(noTiers as any); // saved by an older version without the tiers field
+    assert.deepEqual(store.settings().tiers.map((t) => t.id), ['coder-chief', 'coder-major', 'coder-minor', 'tester', 'docs-writer']);
+  } finally {
+    await app.close();
+  }
+});
+
 test('cards saved by older versions (no skills/mcps fields) load with defaults', async () => {
   const { api, store, app } = await startApp();
   try {
@@ -131,5 +176,16 @@ test('cards saved by older versions (no skills/mcps fields) load with defaults',
     assert.deepEqual([a.skills, a.mcps, a.effort], [null, [], null]);
   } finally {
     await app.close();
+  }
+});
+
+test('one request at a time: a second run while one is running gets 409', async () => {
+  const app = await startApp();
+  try {
+    app.store.createRun('busy1', 'p', 'pipeline');
+    await assert.rejects(app.api('POST', '/api/runs', { prompt: 'again' }), (e: any) => e.status === 409);
+    app.store.endRun('busy1', 'done', {});
+  } finally {
+    await app.app.close();
   }
 });

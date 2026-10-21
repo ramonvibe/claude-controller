@@ -47,7 +47,8 @@ Roles: "coder" writes code, "tester" writes tests, "docs" writes documentation.
 Category (decides which model runs it, cheapest first, so be honest):
 "architecture" = design decisions or cross-cutting changes needing deep reasoning; "feature" = normal code following an existing design;
 "small-change" = small, low-risk edits (rename, copy text, style, config value); "tests" = writing tests; "docs" = README and docs.
-Set "sensitive": true for anything touching secrets, auth or personal data. Do not edit files yourself.
+Also set "tier" to the cheapest delegation level below that cannot get the task wrong. Do not edit files yourself.
+Set "sensitive": true for anything touching secrets, auth or personal data.
 Order tasks so that later ones may depend on earlier ones.`,
   coder: `You are a coder. ${EXECUTOR}`,
   tester: `You are a test writer. Write or fix tests only. ${EXECUTOR}`,
@@ -65,8 +66,10 @@ conventions (style, patterns, error handling), how to run and test. Read only wh
 Reply with the brief only, as plain Markdown.`;
 
 export const AGENT_MODE_PLANNER = `You are the planner of a team of cheaper coding agents. Read only what you need from the repository.
-Delegate each subtask with the orq "delegate_task" tool, one self-contained handoff at a time
+Delegate each subtask with one of the tier tools (coder_chief, coder_major, coder_minor, ...), one self-contained handoff at a time
 (file paths not contents, exact interfaces, runnable acceptance commands, constraints, under 400 tokens).
+Prefer the per-tier tools. "delegate_task" routes by category; use it only for a role no tier covers.
+Choose the cheapest tier that cannot get the task wrong.
 Use "notes_write" for facts several agents need. Do not edit files yourself.
 When everything is done, reply with a summary of at most 5 lines.`;
 

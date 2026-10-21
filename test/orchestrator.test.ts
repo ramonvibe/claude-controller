@@ -122,14 +122,66 @@ test('routing table: category picks the card first, then role match, then coder 
   try {
     const agents = app.store.agents();
     const by = (n: string) => agents.find((a) => a.name === n)!;
-    const r = app.orch.route(h('T', 'coder') as any).map((a) => a.name); // category feature → Codificador
-    assert.equal(r[0], 'Codificador');
+    const r = app.orch.route(h('T', 'coder') as any).map((a) => a.name); // category feature → Coder-Chief
+    assert.equal(r[0], 'Coder-Chief');
     const arch = app.orch.route({ ...h('T', 'coder'), category: 'architecture' } as any).map((a) => a.name);
-    assert.equal(arch[0], 'Planejador');
+    assert.equal(arch[0], 'Coder-Chief');
     const docs = app.orch.route(h('T', 'docs', ['README.md']) as any).map((a) => a.name);
-    assert.deepEqual(docs.slice(0, 2), ['Docs (DeepSeek)', 'Codificador']);
+    assert.deepEqual(docs.slice(0, 2), ['Docs (DeepSeek)', 'Coder-Chief']);
     await app.api('PUT', '/api/settings', { ...app.store.settings(), routing: { 'small-change': [by('Revisor').id] } });
     assert.equal(app.orch.route({ ...h('T', 'coder'), category: 'small-change' } as any)[0].name, 'Revisor');
+  } finally {
+    await app.app.close();
+  }
+});
+
+test('tier: its agents come first; unknown tier routes as its category; sensitive skips external tier agents', async () => {
+  const app = await startApp();
+  try {
+    const by = (n: string) => app.store.agents().find((a) => a.name === n)!;
+    const plain = app.orch.route(h('T', 'coder') as any).map((a) => a.id);
+    assert.deepEqual(app.orch.route({ ...h('T', 'coder'), tier: 'nao-existe' } as any).map((a) => a.id), plain);
+    const chief = app.orch.route({ ...h('T', 'coder'), tier: 'coder-chief' } as any);
+    assert.equal(chief[0].id, by('Coder-Chief').id); // tier agent beats the architecture route (Planejador)
+    const minor = app.orch.route({ ...h('T', 'coder'), tier: 'coder-minor' } as any);
+    assert.equal(minor[0].id, by('Coder-Chief').id); // disabled Coder-Minor card is skipped
+    const safe = app.orch.route({ ...h('T', 'coder'), tier: 'coder-minor', sensitive: true } as any);
+    assert.ok(safe.every((a) => a.provider === 'claude-cli'), JSON.stringify(safe.map((a) => a.provider)));
+    assert.equal(safe[0].id, by('Coder-Chief').id);
+  } finally {
+    await app.app.close();
+  }
+});
+
+test('tier agents: listed agents route first; sensitive handoffs skip the external ones', async () => {
+  const app = await startApp();
+  try {
+    const dsh = app.store.agents().find((a) => a.name === 'Coder-Major (DeepSeek)')!;
+    await app.api('PUT', `/api/agents/${dsh.id}`, { ...dsh, enabled: true });
+    const s = app.store.settings();
+    await app.api('PUT', '/api/settings', { ...s, tiers: s.tiers.map((t) => (t.id === 'coder-major' ? { ...t, agents: [dsh.id] } : t)) });
+    const hand = { ...h('T', 'coder'), tier: 'coder-major' };
+    assert.equal(app.orch.route(hand as any)[0].id, dsh.id);
+    const safe = app.orch.route({ ...hand, sensitive: true } as any);
+    assert.ok(safe.every((a) => a.provider === 'claude-cli'), JSON.stringify(safe.map((a) => a.provider)));
+    assert.notEqual(safe[0].id, dsh.id);
+  } finally {
+    await app.app.close();
+  }
+});
+
+test('tier review:false skips the reviewer', async () => {
+  const log = fakeScript([
+    { structured: { summary: 'p', tasks: [{ ...h('T1', 'coder'), tier: 'coder-chief' }] } },
+    done('T1'), // coder only: no reviewer call
+  ]);
+  const app = await startApp();
+  try {
+    const s = app.store.settings();
+    await app.api('PUT', '/api/settings', { ...s, tiers: s.tiers.map((t) => (t.id === 'coder-chief' ? { ...t, review: false } : t)) });
+    const { end } = await runToEnd(app, 'pedido');
+    assert.equal(end.status, 'done', JSON.stringify(end));
+    assert.deepEqual(calls(log).map(model), ['opus', 'haiku']);
   } finally {
     await app.app.close();
   }
@@ -154,6 +206,103 @@ test('repo map: a cheap agent writes the brief once; the planner gets it; unchan
     assert.match(c[1].stdin, /BRIEF: projeto X/);
     assert.match(c[4].stdin, /BRIEF: projeto X/); // cached
     assert.equal(c.length, 7);
+  } finally {
+    await app.app.close();
+  }
+});
+
+const blocked = { structured: { task_id: 'T1', status: 'blocked', summary: 'fora do escopo do nível', files_changed: [], checks: [], questions: ['qual?'] } };
+
+/** Two claude-cli coders: coder-minor → agent "minor" (haiku), coder-major → agent "major" (sonnet). */
+async function escalationSetup(app: Awaited<ReturnType<typeof startApp>>, majorEscalatesTo?: string) {
+  const minor = await app.api('POST', '/api/agents', { name: 'Minor teste', provider: 'claude-cli', model: 'haiku', role: 'coder', limits: {} });
+  const major = await app.api('POST', '/api/agents', { name: 'Major teste', provider: 'claude-cli', model: 'sonnet', role: 'coder', limits: {} });
+  const s = app.store.settings();
+  const tiers = s.tiers.map((t) => {
+    if (t.id === 'coder-minor') return { ...t, agents: [minor.id], escalateTo: 'coder-major' };
+    if (t.id === 'coder-major') return { ...t, agents: [major.id], escalateTo: majorEscalatesTo };
+    return t;
+  });
+  await app.api('PUT', '/api/settings', { ...s, tiers });
+}
+
+test('escalation: a blocked coder-minor is retried on coder-major before the planner', async () => {
+  const log = fakeScript([
+    { structured: { summary: 'p', tasks: [{ ...h('T1', 'coder'), tier: 'coder-minor' }] } },
+    blocked, // coder-minor agent
+    done('T1'), // coder-major agent
+    done('T1'), // reviewer
+  ]);
+  const app = await startApp();
+  try {
+    await escalationSetup(app);
+    const { end, evs } = await runToEnd(app, 'pedido');
+    assert.equal(end.status, 'done', JSON.stringify(end));
+    const c = calls(log);
+    assert.deepEqual(c.map(model), ['opus', 'haiku', 'sonnet', 'haiku']);
+    assert.match(c[2].stdin, /"tier":"coder-major"/);
+    assert.ok(evs.some((e) => e.kind === 'handoff' && e.payload.reason === 'escalonado para coder-major'));
+    assert.ok(!evs.some((e) => e.kind === 'handoff' && e.payload.reason === 'escalonado ao Planejador'));
+  } finally {
+    await app.app.close();
+  }
+});
+
+test('escalation: when coder-major fails too, the planner takes over as coder', async () => {
+  const log = fakeScript([
+    { structured: { summary: 'p', tasks: [{ ...h('T1', 'coder'), tier: 'coder-minor' }] } },
+    blocked, // coder-minor agent
+    blocked, // coder-major agent: no further tier, so the planner
+    done('T1'), // planner as coder
+    done('T1'), // reviewer
+  ]);
+  const app = await startApp();
+  try {
+    await escalationSetup(app);
+    const { end, evs } = await runToEnd(app, 'pedido');
+    assert.equal(end.status, 'done', JSON.stringify(end));
+    const c = calls(log);
+    assert.deepEqual(c.map(model), ['opus', 'haiku', 'sonnet', 'opus', 'haiku']);
+    assert.match(sysPrompt(c[3]), /^You are a coder/);
+    assert.ok(evs.some((e) => e.kind === 'handoff' && e.payload.reason === 'escalonado ao Planejador'));
+  } finally {
+    await app.app.close();
+  }
+});
+
+test('escalation cycle: coder-major pointing back to coder-minor ends at the planner, no loop', async () => {
+  const log = fakeScript([
+    { structured: { summary: 'p', tasks: [{ ...h('T1', 'coder'), tier: 'coder-minor' }] } },
+    blocked, // coder-minor agent
+    blocked, // coder-major agent; coder-minor already tried, so the planner
+    done('T1'), // planner as coder
+    done('T1'), // reviewer
+  ]);
+  const app = await startApp();
+  try {
+    await escalationSetup(app, 'coder-minor');
+    const { end } = await runToEnd(app, 'pedido');
+    assert.equal(end.status, 'done', JSON.stringify(end));
+    assert.deepEqual(calls(log).map(model), ['opus', 'haiku', 'sonnet', 'opus', 'haiku']);
+  } finally {
+    await app.app.close();
+  }
+});
+
+test('GET /api/orq/:run/tiers: enabled tiers only, tool names with _, category, agent labels; unknown run 404', async () => {
+  const app = await startApp();
+  try {
+    app.store.createRun('r1', 'p', 'pipeline');
+    const s = app.store.settings();
+    // Old settings may lack category: stored without it, read back with the role's default.
+    app.store.saveSettings({ ...s, tiers: s.tiers.map(({ category, ...t }) => (t.id === 'coder-minor' ? { ...t, enabled: false } : t)) as any });
+    const tiers: any[] = await app.api('GET', '/api/orq/r1/tiers');
+    assert.deepEqual(tiers.map((t) => t.tool), ['coder_chief', 'coder_major', 'tester', 'docs_writer']);
+    assert.deepEqual([tiers[0].id, tiers[0].role, tiers[0].category, tiers[0].review, tiers[0].hint], ['coder-chief', 'coder', 'feature', true, 'complex or vital logic that must not fail']);
+    assert.deepEqual(tiers[0].agents, ['Coder-Chief · haiku']);
+    assert.deepEqual(tiers[1].agents, []); // its only card is disabled, so it is not listed
+    assert.deepEqual([tiers[3].category, tiers[3].agents], ['docs', ['Docs (DeepSeek) · deepseek-flash']]);
+    await assert.rejects(app.api('GET', '/api/orq/nope/tiers'), (e: any) => e.status === 404);
   } finally {
     await app.app.close();
   }
