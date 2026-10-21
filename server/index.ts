@@ -8,6 +8,7 @@ import { createApp } from './http.ts';
 import { Orchestrator, orqRoutes } from './orchestrator.ts';
 import { providerRoutes, registerProviders } from './openai.ts';
 import { connectRoutes } from './connect.ts';
+import { traceRoutes } from './trace.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const dataDir = process.env.CC_DATA ?? `${root}data`;
@@ -18,7 +19,7 @@ registerProviders(store, engine);
 
 const orch = new Orchestrator(store, engine, dataDir);
 const token = randomBytes(24).toString('hex');
-const app = createApp({ store, engine, token, staticDir: `${root}dist`, extraRoutes: [...orqRoutes(orch), ...providerRoutes(store, engine), ...connectRoutes(store, engine)] });
+const app = createApp({ store, engine, token, staticDir: `${root}dist`, extraRoutes: [...orqRoutes(orch), ...providerRoutes(store, engine), ...connectRoutes(store, engine), ...traceRoutes(store, engine)] });
 const port = await app.listen(Number(process.env.CC_PORT ?? 7777));
 orch.endpoint = { url: `http://127.0.0.1:${port}`, token };
 console.log(`Claude Controller: http://127.0.0.1:${port}`);

@@ -29,6 +29,11 @@ export class Store {
       create table if not exists notes (run_id text, ts integer, author text, text text);
       create table if not exists providers (id text primary key, data text not null);
     `);
+    // Columns added after the first release (existing databases).
+    for (const col of ['snap_before text', 'snap_after text', 'category text'])
+      try {
+        this.db.exec(`alter table tasks add column ${col}`);
+      } catch {}
     // A previous process died mid-task: those tasks can never finish.
     this.db.exec(`update tasks set status='error', result='{"error":"processo reiniciado"}' where status='running'`);
     this.db.exec(`update runs set status='error' where status='running'`);
@@ -102,10 +107,14 @@ export class Store {
     this.db.prepare('update runs set status=?, ended_at=?, summary=? where id=?').run(status, Date.now(), JSON.stringify(summary), id);
   }
 
-  createTask(t: { id: string; runId: string; parentId: string | null; role: string; agentId: string; input: string }) {
+  createTask(t: { id: string; runId: string; parentId: string | null; role: string; agentId: string; input: string; category?: string | null }) {
     this.db
-      .prepare(`insert into tasks (id, run_id, parent_id, role, agent_id, input, status, started_at) values (?,?,?,?,?,?,'running',?)`)
-      .run(t.id, t.runId, t.parentId, t.role, t.agentId, t.input, Date.now());
+      .prepare(`insert into tasks (id, run_id, parent_id, role, agent_id, input, status, started_at, category) values (?,?,?,?,?,?,'running',?,?)`)
+      .run(t.id, t.runId, t.parentId, t.role, t.agentId, t.input, Date.now(), t.category ?? null);
+  }
+
+  setSnapshot(id: string, which: 'before' | 'after', tree: string | null) {
+    this.db.prepare(`update tasks set snap_${which}=? where id=?`).run(tree, id);
   }
 
   endTask(id: string, status: 'done' | 'error', result: unknown) {

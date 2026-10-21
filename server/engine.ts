@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { statSync } from 'node:fs';
+import { snapshotTree } from './proc.ts';
 import type { Store } from './db.ts';
 import { commandsNote, roleRules, TEMPLATES } from './roles.ts';
 import { estimateTokens } from './handoff.ts';
@@ -18,6 +19,7 @@ export type ExecOpts = {
   schema?: object;
   extraRules?: string[];
   extraServers?: Record<string, McpServerSpec>;
+  category?: string | null;
 };
 
 export type ExecResult = { taskId: string; text: string; structured: unknown; ok: boolean; error?: string; code?: string; usage: Usage[] };
@@ -53,7 +55,7 @@ export class Engine {
     const taskId = newId();
     const base = { runId: o.runId, taskId, agentId: o.agent.id };
     const ctrl = new AbortController();
-    store.createTask({ id: taskId, runId: o.runId, parentId: o.parentId ?? null, role, agentId: o.agent.id, input: o.prompt });
+    store.createTask({ id: taskId, runId: o.runId, parentId: o.parentId ?? null, role, agentId: o.agent.id, input: o.prompt, category: o.category });
     this.running.set(taskId, ctrl);
     store.emit({ ...base, kind: 'started', payload: { role, model: o.agent.model, provider: o.agent.provider, inputTokens: estimateTokens(o.prompt) } });
 
@@ -67,6 +69,7 @@ export class Engine {
       const adapter = this.adapters.get(o.agent.provider);
       if (!adapter) throw new Error(`Provedor desconhecido: ${o.agent.provider}`);
       const settings = store.settings();
+      store.setSnapshot(taskId, 'before', await snapshotTree(this.workspace()));
       const mcp = resolveMcps(o.agent.mcps, o.extraServers);
       if (mcp.missing.length) store.emit({ ...base, kind: 'status', payload: { kind: 'status', text: `MCP indisponível (variável de ambiente ausente): ${mcp.missing.join(', ')}` } });
       if (Object.keys(mcp.servers).length) cfg = writeMcpConfig(join(this.dataDir, 'mcp'), taskId, mcp.servers);
@@ -107,6 +110,10 @@ export class Engine {
     } finally {
       this.running.delete(taskId);
       cfg?.remove();
+      // Per-task diff for the trace view (before/after trees); never fatal.
+      try {
+        store.setSnapshot(taskId, 'after', await snapshotTree(this.workspace()));
+      } catch {}
     }
 
     if (error) {
@@ -120,12 +127,17 @@ export class Engine {
   }
 
   private detected: Promise<any[]> | null = null;
-  /** Detection is cached: it may spawn a CLI (and for dsh, a tiny model call). */
+  private detectedAt = 0;
+  private detectedFor = 0;
+  /** Detection is cached for 5 min: it may spawn a CLI (and for dsh, a tiny model call). */
   diagnostics(refresh = false) {
-    if (refresh || !this.detected)
+    if (refresh || !this.detected || Date.now() - this.detectedAt > 300_000 || this.detectedFor !== this.adapters.size) {
+      this.detectedAt = Date.now();
+      this.detectedFor = this.adapters.size;
       this.detected = Promise.all(
         [...this.adapters.values()].map(async (a) => ({ id: a.id, label: a.label, ...(await a.detect().catch((e) => ({ ok: false, version: null, auth: 'desconhecido', detail: String(e), capabilities: {} }))) })),
       );
+    }
     return this.detected;
   }
 

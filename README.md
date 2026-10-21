@@ -132,4 +132,5 @@ web/               UI (React + Vite)
 fixtures/          saídas reais gravadas das CLIs
 PLANO.md           especificação
 DECISOES.md        fatos verificados e desvios do plano
+docs/ARQUITETURA.md  arquitetura, API e como adicionar provedor
 ```

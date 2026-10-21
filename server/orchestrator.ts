@@ -7,6 +7,7 @@ import { AGENT_MODE_PLANNER, TEMPLATES } from './roles.ts';
 import { orqServer, PRESETS, resolveMcps, writeMcpConfig } from './mcps.ts';
 import claude from './adapters/claude.ts';
 import type { Agent } from './types.ts';
+import { CATEGORIES } from './types.ts';
 import { httpError, type Route } from './http.ts';
 
 /** Roles worth sending to an external (non-Claude) provider first (PLANO.md §4, rule 2). */
@@ -20,6 +21,8 @@ export class Orchestrator {
   cancelled = new Set<string>();
   results = new Map<string, Map<string, Result>>(); // runId → task_id → compact result
   endpoint = { url: '', token: '' }; // set once the HTTP server listens; orq calls back here
+  overrides = new Map<string, Record<string, string>>(); // runId → category → agentId chosen in the pre-flight
+  quotaAtStart = new Map<string, number | null>();
 
   constructor(store: Store, engine: Engine, dataDir: string) {
     this.store = store;
@@ -36,10 +39,11 @@ export class Orchestrator {
   }
 
   /** Ordered candidates for a handoff: role match, sensitive filter, external-first for delegable roles, coder fallback. */
-  route(h: Handoff): Agent[] {
+  route(h: Handoff, runId?: string): Agent[] {
     const all = this.enabled();
     const allowed = (a: Agent) => !h.sensitive || !this.external(a);
-    const byCategory = (this.store.settings().routing[h.category] ?? []).map((id) => all.find((a) => a.id === id)).filter((a): a is Agent => Boolean(a) && allowed(a!));
+    const override = runId ? this.overrides.get(runId)?.[h.category] : undefined;
+    const byCategory = [...(override ? [override] : []), ...(this.store.settings().routing[h.category] ?? [])].map((id) => all.find((a) => a.id === id)).filter((a): a is Agent => Boolean(a) && allowed(a!));
     let c = all.filter((a) => a.role === h.role && allowed(a) && !byCategory.includes(a));
     const busy = (a: Agent) => this.store.liveState().running.filter((t: any) => t.agentId === a.id).length;
     c.sort((a, b) => (DELEGABLE.has(h.role) ? Number(this.external(b)) - Number(this.external(a)) : 0) || busy(a) - busy(b));
@@ -54,10 +58,12 @@ export class Orchestrator {
     return p;
   }
 
-  start(prompt: string) {
+  start(prompt: string, overrides: Record<string, string> = {}) {
     this.engine.workspace();
     const planner = this.planner();
     const runId = newId();
+    this.overrides.set(runId, overrides);
+    this.quotaAtStart.set(runId, fiveHour(this.engine.lastRateLimit));
     const mode = this.store.settings().mode;
     this.store.createRun(runId, prompt, mode);
     this.store.emit({ runId, taskId: null, agentId: null, kind: 'run_started', payload: { prompt, mode } });
@@ -70,11 +76,18 @@ export class Orchestrator {
 
   private finish(runId: string, status: string, summary: string, results: Result[]) {
     if (this.cancelled.delete(runId)) status = 'cancelled';
+    this.overrides.delete(runId);
+    // Quota share of this run: 5h utilization before (last seen) vs the last value reported during the run.
+    const seen = (this.store.db.prepare(`select payload from events where run_id=? and kind='rate_limit' order by id`).all(runId) as any[]).map((e) => fiveHour(JSON.parse(e.payload).info));
+    const before = this.quotaAtStart.get(runId) ?? seen[0] ?? null;
+    this.quotaAtStart.delete(runId);
+    const after = seen.at(-1) ?? null;
+    const quota = before != null && after != null ? { before, after } : null;
     const usage = this.store.usageTotals(runId) as any[];
     const tok = (u: any) => u.input + u.output + u.cacheRead + u.cacheCreate;
     const opusTokens = usage.filter((u) => /opus/.test(u.model)).reduce((s, u) => s + tok(u), 0);
     const totalTokens = usage.reduce((s, u) => s + tok(u), 0);
-    const payload = { status, summary, results: results.map((r) => ({ task_id: r.task_id, status: r.status, summary: r.summary })), opusTokens, totalTokens };
+    const payload = { status, summary, quota, results: results.map((r) => ({ task_id: r.task_id, status: r.status, summary: r.summary })), opusTokens, totalTokens };
     this.store.endRun(runId, status, payload);
     this.store.emit({ runId, taskId: null, agentId: null, kind: 'run_done', payload });
   }
@@ -105,7 +118,7 @@ export class Orchestrator {
   }
 
   private async handleInner(runId: string, h: Handoff): Promise<Result> {
-    const candidates = this.route(h);
+    const candidates = this.route(h, runId);
     if (!candidates.length) return fail(h, `Nenhum agente ativo para o papel ${h.role}.`);
     const reviewer = this.enabled('reviewer')[0];
     let agent = candidates[0];
@@ -154,13 +167,14 @@ export class Orchestrator {
       systemPrompt: escalated ? TEMPLATES.coder : undefined,
       prompt,
       schema: resultSchema,
+      category: h.category,
     });
   }
 
   private async review(runId: string, reviewer: Agent, h: Handoff, r: Result): Promise<Result> {
     const prompt = JSON.stringify({ handoff: h, executor: { summary: r.summary, files_changed: r.files_changed, checks: r.checks } });
     this.store.emit({ runId, taskId: null, agentId: reviewer.id, kind: 'handoff', payload: { handoff: h, role: 'reviewer', tokens: estimateTokens(prompt), reason: 'revisão' } });
-    const exec = await this.engine.execute({ runId, agent: reviewer, role: 'reviewer', prompt, schema: resultSchema });
+    const exec = await this.engine.execute({ runId, agent: reviewer, role: 'reviewer', prompt, schema: resultSchema, category: h.category });
     // A reviewer that crashes must not block the pipeline: accept the executor's own checks.
     return exec.ok ? toResult(h.task_id, exec.structured, exec.text, false) : { ...r, summary: `revisor indisponível: ${exec.error}` };
   }
@@ -186,6 +200,30 @@ export class Orchestrator {
     this.cancelled.add(runId);
     for (const t of this.store.liveState().running as any[]) if (t.runId === runId) this.engine.cancel(t.id);
   }
+}
+
+const fiveHour = (info: any): number | null => (typeof info?.unifiedWindows?.five_hour?.utilization === 'number' ? info.unifiedWindows.five_hour.utilization : null);
+
+const ROLE_OF: Record<string, Handoff['role']> = { architecture: 'coder', feature: 'coder', 'small-change': 'coder', tests: 'tester', docs: 'docs' };
+
+/** Before a run: is the first card of every category (plus planner and reviewer) actually connected? */
+export async function preflight(orch: Orchestrator) {
+  const diag = await orch.engine.diagnostics();
+  const ready = (a: Agent) => diag.find((d: any) => d.id === a.provider)?.auth === 'ok';
+  const problems: any[] = [];
+  for (const category of CATEGORIES) {
+    const h = { task_id: 'x', role: ROLE_OF[category], category, goal: '', files: [], context: '', interfaces: '', steps: [], acceptance: [], constraints: [], sensitive: false } as Handoff;
+    const chain = orch.route(h);
+    if (!chain.length || ready(chain[0])) continue;
+    const alt = chain.find(ready);
+    const reason = diag.find((d: any) => d.id === chain[0].provider)?.detail ?? 'provedor não encontrado';
+    problems.push({ category, agent: { id: chain[0].id, name: chain[0].name, provider: chain[0].provider }, reason, alternative: alt ? { id: alt.id, name: alt.name, model: alt.model } : null });
+  }
+  for (const role of ['planner', 'reviewer'] as const) {
+    const a = orch.store.agents().find((x) => x.enabled && x.role === role);
+    if (a && !ready(a)) problems.push({ category: role, agent: { id: a.id, name: a.name, provider: a.provider }, reason: 'provedor não conectado', alternative: null });
+  }
+  return { ok: problems.length === 0, problems };
 }
 
 function fail(h: Handoff, summary: string): Result {
@@ -264,7 +302,11 @@ export function orqRoutes(orch: Orchestrator): Route[] {
       orch.store.addNote(runOf(params[0]), 'planner', z.object({ text: z.string().min(1).max(2000) }).parse(body).text);
       return { ok: true };
     }],
-    ['POST', /^\/api\/runs$/, ({ body }) => orch.start(z.object({ prompt: z.string().min(1).max(100_000) }).parse(body).prompt)],
+    ['GET', /^\/api\/preflight$/, () => preflight(orch)],
+    ['POST', /^\/api\/runs$/, ({ body }) => {
+      const b = z.object({ prompt: z.string().min(1).max(100_000), overrides: z.record(z.string(), z.string()).default({}) }).parse(body);
+      return orch.start(b.prompt, b.overrides);
+    }],
     ['POST', /^\/api\/runs\/([\w-]+)\/cancel$/, ({ params }) => {
       orch.cancel(params[0]);
       return { ok: true };

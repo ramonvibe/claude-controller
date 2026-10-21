@@ -34,6 +34,7 @@ export async function startApp() {
   const { Orchestrator, orqRoutes } = await import('../server/orchestrator.ts');
   const { providerRoutes, registerProviders } = await import('../server/openai.ts');
   const { connectRoutes } = await import('../server/connect.ts');
+  const { traceRoutes } = await import('../server/trace.ts');
   const dir = tmp();
   const ws = join(dir, 'workspace');
   mkdirSync(ws);
@@ -46,7 +47,7 @@ export async function startApp() {
   mkdirSync(staticDir);
   writeFileSync(join(staticDir, 'index.html'), '<html><head></head><body>ui</body></html>');
   const orch = new Orchestrator(store, engine, dir);
-  const app = createApp({ store, engine, token: 'tok', staticDir, extraRoutes: [...orqRoutes(orch), ...providerRoutes(store, engine), ...connectRoutes(store, engine)] });
+  const app = createApp({ store, engine, token: 'tok', staticDir, extraRoutes: [...orqRoutes(orch), ...providerRoutes(store, engine), ...connectRoutes(store, engine), ...traceRoutes(store, engine)] });
   const port = await app.listen(0);
   orch.endpoint = { url: `http://127.0.0.1:${port}`, token: 'tok' };
   const base = `http://127.0.0.1:${port}`;

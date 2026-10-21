@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { parseEnv } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
@@ -107,6 +107,18 @@ export function providerRoutes(store: Store, engine: Engine): Route[] {
   const changed = () => store.emit({ runId: null, taskId: null, agentId: null, kind: 'agents_changed', payload: null });
   return [
     ['GET', /^\/api\/catalog$/, () => CATALOG.map(({ id, label, tier, kind, baseUrl, keyEnv, keyUrl, note }) => ({ id, label, tier, kind, baseUrl, keyEnv, keyUrl, note, keySet: keyEnv ? Boolean(getKey(keyEnv)) : null }))],
+    // Write-only: the key goes from the page to the local .env once and is never sent back.
+    ['POST', /^\/api\/keys$/, ({ body }) => {
+      const { name, value } = z.object({ name: z.string().regex(/^[A-Z][A-Z0-9_]*$/), value: z.string().min(8).max(500).regex(/^[^\s"'#\\]+$/, 'chave com caracteres inválidos') }).parse(body);
+      let text = '';
+      try {
+        text = readFileSync(ENV_FILE, 'utf8');
+      } catch {}
+      const lines = text.split('\n').filter((l) => l.trim() && !l.startsWith(`${name}=`));
+      writeFileSync(ENV_FILE, [...lines, `${name}=${value}`].join('\n') + '\n', { mode: 0o600 });
+      engine.diagnostics(true);
+      return { ok: true, name };
+    }],
     ['GET', /^\/api\/providers$/, () => store.providers().map((p) => ({ ...p, keySet: Boolean(getKey(p.keyEnv)) }))],
     ['POST', /^\/api\/providers\/models$/, ({ body }) => remoteModels(ProviderInput.pick({ catalog: true, baseUrl: true, keyEnv: true }).parse(body))],
     ['POST', /^\/api\/providers$/, ({ body }) => {
