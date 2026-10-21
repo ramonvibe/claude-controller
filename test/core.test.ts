@@ -121,3 +121,15 @@ test('nonexistent workspace: rejected on save (400) and a stale one fails the ru
     await app.close();
   }
 });
+
+test('cards saved by older versions (no skills/mcps fields) load with defaults', async () => {
+  const { api, store, app } = await startApp();
+  try {
+    const old = { id: 'old1', name: 'Velho', provider: 'claude-cli', model: 'haiku', role: 'coder', systemPrompt: null, tools: null, inheritUserConfig: false, limits: { maxBudgetUsd: null, maxReviewLoops: 2, timeoutSec: 600 }, enabled: true };
+    store.db.prepare('insert into agents (id, pos, data) values (?, 99, ?)').run(old.id, JSON.stringify(old));
+    const a = (await api('GET', '/api/state')).agents.find((x: any) => x.id === 'old1');
+    assert.deepEqual([a.skills, a.mcps, a.effort], [null, [], null]);
+  } finally {
+    await app.close();
+  }
+});

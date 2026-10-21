@@ -6,6 +6,9 @@ import type { Agent, BusEvent, Settings, Usage } from './types.ts';
 
 const DEFAULT_SETTINGS: Settings = { workspace: null, testCommands: ['npm test'], parallel: false, mode: 'pipeline', routing: {}, skills: [] };
 
+/** Cards saved by older versions lack newer fields. */
+const withDefaults = (a: Agent): Agent => ({ ...a, mcps: a.mcps ?? [], skills: a.skills === undefined ? null : a.skills, effort: a.effort ?? null });
+
 export class Store {
   db: DatabaseSync;
   bus = new EventEmitter();
@@ -72,12 +75,12 @@ export class Store {
   }
 
   agents(): Agent[] {
-    return (this.db.prepare('select data from agents order by pos, rowid').all() as { data: string }[]).map((r) => JSON.parse(r.data));
+    return (this.db.prepare('select data from agents order by pos, rowid').all() as { data: string }[]).map((r) => withDefaults(JSON.parse(r.data)));
   }
 
   agent(id: string): Agent | undefined {
     const r = this.db.prepare('select data from agents where id=?').get(id) as { data: string } | undefined;
-    return r && JSON.parse(r.data);
+    return r && withDefaults(JSON.parse(r.data));
   }
 
   saveAgent(a: Agent) {
