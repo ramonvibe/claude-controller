@@ -8,7 +8,7 @@ import type { Store } from './db.ts';
 import type { Engine } from './engine.ts';
 import { capture } from './proc.ts';
 import { CLI_TIERS } from './catalog.ts';
-import { geminiCmd, GEMINI_ENV, geminiLoggedIn } from './adapters/gemini.ts';
+import { geminiCmd, geminiEnv, geminiLoggedIn } from './adapters/gemini.ts';
 import { httpError, type Route } from './http.ts';
 
 const LOGIN_TIMEOUT = 10 * 60_000;
@@ -79,15 +79,22 @@ export function connectRoutes(store: Store, engine: Engine): Route[] {
         } catch {}
       writeFileSync(join(shim, 'xdg-open'), `#!/bin/sh\nprintf '%s' "$1" > '${urlFile}'\n${real ? `exec '${real}' "$@"` : 'exit 0'}\n`);
       chmodSync(join(shim, 'xdg-open'), 0o755);
-      const sess = launch('gemini-cli', cmd, [...pre, '-p', 'Reply with: ok', '-o', 'json', '--skip-trust'], { ...GEMINI_ENV, PATH: `${shim}:${process.env.PATH}` }, () => {},
+      const sess = launch('gemini-cli', cmd, [...pre, '-p', 'Reply with: ok', '-o', 'json', '--skip-trust'], { ...geminiEnv(), PATH: `${shim}:${process.env.PATH}` }, () => {},
         (code) => (code === 0 && geminiLoggedIn() ? done('gemini-cli', 'ok') : done('gemini-cli', 'error', `gemini saiu (código ${code})`)), 'y\n');
-      const w = watch(shim, () => {
-        if (!existsSync(urlFile) || sess.url) return;
-        sess.url = readFileSync(urlFile, 'utf8');
-        if (URL_RE.test(sess.url)) emit('gemini-cli', { status: 'waiting', url: sess.url });
+      // The watch event can fire before the shim finished writing: only accept a complete URL.
+      const grab = () => {
+        if (sess.url || !existsSync(urlFile)) return;
+        const url = readFileSync(urlFile, 'utf8');
+        if (!URL_RE.test(url)) return;
+        sess.url = url;
+        emit('gemini-cli', { status: 'waiting', url });
+        w.close();
+      };
+      const w = watch(shim, grab);
+      sess.child.prependListener('exit', () => {
+        grab();
         w.close();
       });
-      sess.child.on('exit', () => w.close());
       return { url: null, message: real ? 'O login do Google vai abrir no seu navegador. Conclua lá; o card muda sozinho.' : 'xdg-open não encontrado: use o link que vai aparecer aqui.' };
     },
   };

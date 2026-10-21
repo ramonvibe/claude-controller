@@ -10,7 +10,8 @@ export function geminiCmd(): [string, string[]] {
   return ['npx', ['-y', '@google/gemini-cli@0.65.0']];
 }
 // "Login with Google" (free tier): selects the auth type without touching ~/.gemini/settings.json.
-export const GEMINI_ENV = { ...process.env, GOOGLE_GENAI_USE_GCA: 'true' };
+// Built per call: a snapshot taken at import time would pin HOME/PATH to whatever they were then.
+export const geminiEnv = () => ({ ...process.env, GOOGLE_GENAI_USE_GCA: 'true' });
 export const geminiLoggedIn = () => existsSync(join(homedir(), '.gemini', 'oauth_creds.json'));
 
 /**
@@ -70,7 +71,7 @@ const gemini: Adapter = {
     const headBefore = await gitHead(i.cwd);
     let text = '';
     let failed = false;
-    for await (const item of ndjson(cmd, args, { cwd: i.cwd, stdin: `${i.systemPrompt}\n\n---\n\n${i.prompt}`, signal: i.signal, timeoutMs: i.agent.limits.timeoutSec * 1000, env: GEMINI_ENV })) {
+    for await (const item of ndjson(cmd, args, { cwd: i.cwd, stdin: `${i.systemPrompt}\n\n---\n\n${i.prompt}`, signal: i.signal, timeoutMs: i.agent.limits.timeoutSec * 1000, env: geminiEnv() })) {
       if ('json' in item) {
         for (const ev of mapGeminiEvent(item.json)) {
           if (ev.kind === 'delta') text += ev.text;

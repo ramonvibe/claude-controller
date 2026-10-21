@@ -12,6 +12,7 @@ const answer = fs.readFileSync(0, 'utf8').trim().toLowerCase();
 if (!['y', ''].includes(answer)) process.exit(41);
 if (!args.includes('--skip-trust')) process.exit(55);
 execFileSync('xdg-open', ['https://accounts.google.com/o/oauth2/v2/auth?client_id=fake']);
+if (!process.env.HOME.includes('cc-test-')) throw new Error(`refusing to write outside a test HOME: ${process.env.HOME}`);
 fs.mkdirSync(`${process.env.HOME}/.gemini`, { recursive: true });
 fs.writeFileSync(`${process.env.HOME}/.gemini/oauth_creds.json`, '{}');
 console.log('{"response":"ok"}');
