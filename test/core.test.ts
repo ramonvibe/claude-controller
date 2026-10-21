@@ -104,3 +104,8 @@ test('security: token required, foreign Host rejected, bypassPermissions impossi
     await app.close();
   }
 });
+
+test('JSON schemas passed to --json-schema carry no $schema key (CLI rejects draft 2020-12 ref)', async () => {
+  const { planSchema, resultSchema } = await import('../server/handoff.ts');
+  for (const s of [planSchema, resultSchema]) assert.ok(!('$schema' in s));
+});

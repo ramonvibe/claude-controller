@@ -45,3 +45,20 @@ Registro de fatos verificados e desvios em relação ao PLANO.md. Cada fixture c
   - `Read(**/.env*)`, `Edit(**/.env*)`, `Read(**/*.pem)`, `Read(**/*.key)`
   - Verificado ao vivo (`test/live.test.ts`): `npm test` roda; a leitura de `.env` e o `git commit` são negados. Cada regra vai num argumento separado do argv, porque contém espaços.
   - `bypassPermissions` é rejeitado na validação do card.
+
+## Fase 3: orquestração
+
+- **`--json-schema` recusa o `$schema` que o zod gera.** O erro é `no schema with key or ref "https://json-schema.org/draft/2020-12/schema"`. Os esquemas são enviados sem essa chave.
+- **Os agentes recebem no system prompt a lista dos comandos de shell permitidos** (os de teste e o git de leitura). No primeiro run real, o planner escreveu aceites como `cd … && node -e …`, e a allowlist negou todos. Com isso, o codificador devolveu `blocked` e a tarefa escalou sem necessidade. Depois da mudança, o mesmo pedido passou de primeira.
+- **Run real de referência**, com o pedido `slugify` + testes em `test/live.test.ts` (Opus planeja, Haiku codifica, Haiku revisa):
+
+  | | Valor |
+  |---|---|
+  | Opus | 17,8k tokens, 1,2k de saída |
+  | Total | 104k tokens, a maior parte em `cache_read` |
+  | Handoffs | entre 247 e 414 tokens cada |
+  | Custo de lista | US$ 0,044 |
+
+  O `npm test` passou no workspace e nenhum commit foi feito.
+- **Um revisor que falha (o processo, não a revisão) não trava o pipeline.** O resultado do executor é aceito, com a nota "revisor indisponível".
+- **Provedor desconhecido conta como externo.** Por isso, ele nunca recebe handoffs `sensitive`.

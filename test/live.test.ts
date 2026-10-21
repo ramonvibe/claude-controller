@@ -6,6 +6,8 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const live = process.env.LIVE === '1';
+// node --test sets this for its children; npm test inside the workspace would then refuse to run.
+delete process.env.NODE_TEST_CONTEXT;
 
 test('live: lean Haiku runs allowed test command, cannot read .env nor commit', { skip: !live, timeout: 240000 }, async () => {
   delete process.env.CLAUDE_BIN;
@@ -34,5 +36,33 @@ test('live: lean Haiku runs allowed test command, cannot read .env nor commit', 
     console.log('live usage', usage, evs.filter((e) => e.kind === 'tool_use').map((e) => e.payload.name));
   } finally {
     await app.close();
+  }
+});
+
+test('live: orchestrated run planner(Opus) → coder(Haiku) → reviewer(Haiku) completes a tiny task', { skip: !live, timeout: 900000 }, async () => {
+  const { startApp, collect } = await import('./helpers.ts');
+  process.env.CLAUDE_BIN = 'claude';
+  delete process.env.FAKE_SCRIPT;
+  process.env.DSH_BIN = '/nonexistent/dsh';
+  const app = await startApp();
+  try {
+    writeFileSync(join(app.ws, 'package.json'), JSON.stringify({ name: 'w', type: 'module', scripts: { test: 'node --test' } }));
+    execSync('git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -qm init', { cwd: app.ws });
+    const c = collect(app.port, (evs) => evs.some((e) => e.kind === 'run_done'), 880000);
+    await c.ready;
+    const { runId } = await app.api('POST', '/api/runs', {
+      prompt: 'Crie `slugify(s)` em src/slugify.js (ESM, export nomeado): minúsculas, remove acentos, troca não-alfanuméricos por "-", sem "-" nas pontas. Crie test/slugify.test.js com node:test cobrindo esses casos. `npm test` deve passar.',
+    });
+    const evs = await c.done;
+    const end = evs.find((e) => e.kind === 'run_done').payload;
+    const run = await app.api('GET', `/api/runs/${runId}`);
+    console.log(JSON.stringify(end, null, 1));
+    console.log(run.usage.map((u: any) => `${u.model}: in ${u.input} out ${u.output} cacheR ${u.cacheRead} cacheW ${u.cacheCreate} $${u.costUsd}`).join('\n'));
+    console.log(evs.filter((e) => e.kind === 'handoff').map((e) => `${e.payload.role} ${e.payload.tokens}t ${e.payload.reason}`).join('\n'));
+    assert.equal(end.status, 'done');
+    execSync('npm test', { cwd: app.ws }); // throws if the produced code fails
+    assert.equal(execSync('git rev-list --count HEAD', { cwd: app.ws }).toString().trim(), '1', 'agents never commit');
+  } finally {
+    await app.app.close();
   }
 });

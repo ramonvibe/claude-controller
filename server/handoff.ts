@@ -27,8 +27,13 @@ export const Result = z.object({
 });
 export type Result = z.infer<typeof Result>;
 
-export const planSchema = z.toJSONSchema(Plan);
-export const resultSchema = z.toJSONSchema(Result);
+// The CLI's validator does not know the draft 2020-12 meta-schema that zod emits as "$schema".
+const cliSchema = (t: z.ZodType) => {
+  const { $schema, ...rest } = z.toJSONSchema(t);
+  return rest;
+};
+export const planSchema = cliSchema(Plan);
+export const resultSchema = cliSchema(Result);
 
 /** First balanced {...} block in free text (providers without --json-schema). */
 function extractJson(text: string): unknown {

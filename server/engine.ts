@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { statSync } from 'node:fs';
 import type { Store } from './db.ts';
-import { roleRules, TEMPLATES } from './roles.ts';
+import { commandsNote, roleRules, TEMPLATES } from './roles.ts';
 import { estimateTokens } from './handoff.ts';
 import type { Adapter, Agent, Role, Usage } from './types.ts';
 
@@ -63,7 +63,7 @@ export class Engine {
       for await (const ev of adapter.run({
         agent: o.agent,
         prompt: o.prompt,
-        systemPrompt: o.systemPrompt ?? o.agent.systemPrompt ?? TEMPLATES[role],
+        systemPrompt: (o.systemPrompt ?? o.agent.systemPrompt ?? TEMPLATES[role]) + commandsNote(settings.testCommands),
         rules,
         cwd: this.workspace(),
         schema: adapter.supportsSchema ? o.schema : undefined,

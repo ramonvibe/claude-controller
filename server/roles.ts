@@ -61,3 +61,9 @@ Delegate each subtask with the orq "delegate_task" tool, one self-contained hand
 (file paths not contents, exact interfaces, runnable acceptance commands, constraints, under 400 tokens).
 Use "notes_write" for facts several agents need. Do not edit files yourself.
 When everything is done, reply with a summary of at most 5 lines.`;
+
+/** Appended to every system prompt: agents only know which shell commands will pass the allowlist if told. */
+export function commandsNote(testCommands: string[]) {
+  const cmds = [...testCommands, 'git diff', 'git status', 'git log'].map((c) => `\`${c}\``).join(', ');
+  return `\n\nShell commands that are allowed (cwd is already the repository root; no cd, no pipes, no other commands): ${cmds}. Acceptance criteria must be checkable with exactly these commands or by reading files.`;
+}

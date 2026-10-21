@@ -28,6 +28,7 @@ export async function startApp() {
   const { loadAdapters } = await import('../server/adapters/index.ts');
   const { seedAgents } = await import('../server/agents.ts');
   const { createApp } = await import('../server/http.ts');
+  const { Orchestrator, orqRoutes } = await import('../server/orchestrator.ts');
   const dir = tmp();
   const ws = join(dir, 'workspace');
   mkdirSync(ws);
@@ -38,7 +39,8 @@ export async function startApp() {
   const staticDir = join(dir, 'dist');
   mkdirSync(staticDir);
   writeFileSync(join(staticDir, 'index.html'), '<html><head></head><body>ui</body></html>');
-  const app = createApp({ store, engine, token: 'tok', staticDir });
+  const orch = new Orchestrator(store, engine, dir);
+  const app = createApp({ store, engine, token: 'tok', staticDir, extraRoutes: orqRoutes(orch) });
   const port = await app.listen(0);
   const base = `http://127.0.0.1:${port}`;
   const api = async (method: string, path: string, body?: unknown) => {
@@ -47,7 +49,7 @@ export async function startApp() {
     if (!r.ok) throw Object.assign(new Error(j.error), { status: r.status });
     return j;
   };
-  return { store, engine, app, base, port, api, ws, dir };
+  return { store, engine, orch, app, base, port, api, ws, dir };
 }
 
 /** Collect WebSocket events until `until` returns true. */
