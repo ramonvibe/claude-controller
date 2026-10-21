@@ -98,3 +98,8 @@ Registro de fatos verificados e desvios em relação ao PLANO.md. Cada fixture c
 
   A leitura de `.env` pelo `dsh` **não** é bloqueada.
 - **Os testes nunca chamam o `dsh` real.** `test/helpers.ts` aponta `DSH_BIN` para `test/fake-dsh.mjs`.
+
+## Correção: DeepSeek autenticado pelo login do `dsh web`
+
+- **Causa real:** o perfil headless vem com `deepseek-account`, `credentials` e `authorization` em `disabled: true`, e o plugin de conta depende dos outros dois. O overlay gerado pelo adapter agora religa os três (`disabled: false`). Com isso, o headless usa o mesmo login Google feito no `dsh web`, sem chave de API. Isso substitui a conclusão "não autenticado" da fase 5.
+- **O uso de tokens é real.** Ele chega em `{"type":"status","phase":"step_end","usage":{inputTokens,outputTokens,cacheReadTokens,cacheWriteTokens}}`, e o texto chega em `{"type":"text"}` (`fixtures/dsh/ok-account.ndjson`). Um "ok" custou 5.751 tokens de entrada no DeepSeek, que é o contexto base do próprio dsh.

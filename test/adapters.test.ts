@@ -42,9 +42,12 @@ test('dsh: recorded auth failures map to error events with their codes', () => {
   }
 });
 
-test('dsh: usage fields are picked up when present', () => {
-  const [u]: any = mapDshEvent({ type: 'usage', usage: { inputTokens: 7, outputTokens: 3 } }, 'deepseek-flash');
-  assert.deepEqual([u.kind, u.input, u.output, u.source, u.costUsd], ['usage', 7, 3, 'dsh-events', null]);
+test('dsh: authenticated recorded run gives text, real usage and result', () => {
+  const evs = fixture('ok-account').flatMap((o) => mapDshEvent(o, 'deepseek-flash'));
+  assert.deepEqual(evs.map((e) => e.kind), ['status', 'delta', 'usage', 'result']);
+  const u: any = evs[2];
+  assert.deepEqual([u.input, u.output, u.source, u.costUsd], [5751, 2, 'dsh-events', null]);
+  assert.equal((evs[3] as any).text, 'ok');
 });
 
 test('dsh: detect reports "não autenticado" for the observed sign-in error', async () => {
@@ -67,6 +70,7 @@ test('dsh: run sends role template + task via stdin with the account patch; esti
   assert.deepEqual(call.args.filter((a: string) => !a.endsWith('.yml')), ['--profile', 'headless', '--patch', '--json', '-']);
   assert.match(call.stdin, /^PAPEL[\s\S]*TAREFA$/);
   assert.match(call.patch, /provider: deepseek-account/);
+  for (const id of ['authorization', 'credentials', 'deepseek-account']) assert.match(call.patch, new RegExp(`id: ${id}\\n.*\\n  disabled: false`));
   assert.match(call.patch, /model: "deepseek-flash"/);
 });
 

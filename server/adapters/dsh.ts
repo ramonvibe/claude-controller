@@ -14,7 +14,13 @@ function accountPatch(model: string) {
   const path = join(dir, 'account.patch.yml');
   writeFileSync(
     path,
-    `- id: agent-default-model\n  name: '@deepseek-ai/dsh-agent-default-model'\n  config:\n    provider: deepseek-account\n    model: ${JSON.stringify(model)}\n`,
+    // headless ships these three disabled; the account route needs all of them (DECISOES.md).
+    [
+      ['authorization', 'dsh-authorization'],
+      ['credentials', 'dsh-credentials-local'],
+      ['deepseek-account', 'dsh-deepseek-account-platform'],
+    ].map(([id, pkg]) => `- id: ${id}\n  name: '@deepseek-ai/${pkg}'\n  disabled: false\n`).join('') +
+      `- id: agent-default-model\n  name: '@deepseek-ai/dsh-agent-default-model'\n  config:\n    provider: deepseek-account\n    model: ${JSON.stringify(model)}\n`,
   );
   return { path, remove: () => rmSync(dir, { recursive: true, force: true }) };
 }
@@ -22,10 +28,10 @@ function accountPatch(model: string) {
 /** Map one `dsh --json` event (fixtures/dsh/*.ndjson) to adapter events. */
 export function mapDshEvent(o: any, model: string): AdapterEvent[] {
   const out: AdapterEvent[] = [];
-  // Token fields were not observed yet (no authenticated run); accept them wherever they show up.
-  const u = o?.usage ?? o;
+  // Usage arrives on status/step_end (fixtures/dsh/ok-account.ndjson).
+  const u = o?.usage;
   if (typeof u?.inputTokens === 'number' || typeof u?.outputTokens === 'number')
-    out.push({ kind: 'usage', model, input: u.inputTokens ?? 0, output: u.outputTokens ?? 0, cacheRead: u.cacheReadTokens ?? 0, cacheCreate: 0, costUsd: null, source: 'dsh-events' });
+    out.push({ kind: 'usage', model, input: u.inputTokens ?? 0, output: u.outputTokens ?? 0, cacheRead: u.cacheReadTokens ?? 0, cacheCreate: u.cacheWriteTokens ?? 0, costUsd: null, source: 'dsh-events' });
   switch (o?.type) {
     case 'session':
       out.push({ kind: 'status', text: `sessão ${o.sessionId}` });
@@ -33,6 +39,9 @@ export function mapDshEvent(o: any, model: string): AdapterEvent[] {
     case 'status':
       if (o.phase === 'turn_end' && o.reason?.kind === 'error')
         out.push({ kind: 'error', message: o.reason.error?.message ?? 'erro no dsh', code: o.reason.error?.code });
+      break;
+    case 'text':
+      if (o.text) out.push({ kind: 'delta', text: o.text });
       break;
     case 'final':
       if (o.text) out.push({ kind: 'result', text: o.text, isError: false });
