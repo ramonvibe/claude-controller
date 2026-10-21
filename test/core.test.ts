@@ -109,3 +109,15 @@ test('JSON schemas passed to --json-schema carry no $schema key (CLI rejects dra
   const { planSchema, resultSchema } = await import('../server/handoff.ts');
   for (const s of [planSchema, resultSchema]) assert.ok(!('$schema' in s));
 });
+
+test('nonexistent workspace: rejected on save (400) and a stale one fails the run with 400, not 500', async () => {
+  const { api, store, app } = await startApp();
+  try {
+    const s = store.settings();
+    await assert.rejects(api('PUT', '/api/settings', { ...s, workspace: '/home/nao-existe/' }), (e: any) => e.status === 400 && /não existe/.test(e.message));
+    store.saveSettings({ ...s, workspace: '/home/nao-existe/' }); // saved by an older version
+    await assert.rejects(api('POST', '/api/runs', { prompt: 'x' }), (e: any) => e.status === 400 && /não existe/.test(e.message));
+  } finally {
+    await app.close();
+  }
+});

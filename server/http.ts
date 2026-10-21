@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
+import { statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
 import { WebSocketServer } from 'ws';
@@ -86,6 +87,8 @@ export function createApp(ctx: Ctx) {
     }],
     ['PUT', /^\/api\/settings$/, ({ body }) => {
       const s = SettingsInput.parse(body);
+      if (s.workspace && !statSync(s.workspace, { throwIfNoEntry: false })?.isDirectory())
+        throw httpError(400, `Workspace não existe ou não é um diretório: ${s.workspace}`);
       store.saveSettings(s);
       return s;
     }],
@@ -146,7 +149,7 @@ export function createApp(ctx: Ctx) {
       }
       throw httpError(404, 'rota não encontrada');
     } catch (e: any) {
-      const status = e instanceof HttpError ? e.status : e instanceof z.ZodError ? 400 : 500;
+      const status = e instanceof HttpError ? e.status : e instanceof z.ZodError ? 400 : typeof e?.status === 'number' ? e.status : 500;
       const message = e instanceof z.ZodError ? z.prettifyError(e) : (e?.message ?? String(e));
       if (!res.headersSent) res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify({ error: message }));
     }

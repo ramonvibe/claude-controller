@@ -39,8 +39,9 @@ export class Engine {
 
   workspace(): string {
     const ws = this.store.settings().workspace;
-    if (!ws) throw new Error('Configure o workspace antes de rodar tarefas.');
-    if (!statSync(ws, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`Workspace não é um diretório: ${ws}`);
+    const bad = (msg: string) => Object.assign(new Error(msg), { status: 400 });
+    if (!ws) throw bad('Configure o workspace antes de rodar tarefas.');
+    if (!statSync(ws, { throwIfNoEntry: false })?.isDirectory()) throw bad(`Workspace não existe ou não é um diretório: ${ws}`);
     return ws;
   }
 
