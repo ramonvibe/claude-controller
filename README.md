@@ -27,6 +27,18 @@ npm start
 
 Abra **http://127.0.0.1:7777**. O servidor escuta só em `127.0.0.1` e gera um token novo a cada início.
 
+Para iniciar com `claude --app` de qualquer pasta, adicione ao `~/.bashrc` (troque o caminho pelo seu). Qualquer outro uso de `claude` continua indo para o Claude Code:
+
+```bash
+claude() {
+  if [ "$1" = "--app" ]; then
+    (cd /caminho/para/claude-controller && npm start)
+  else
+    command claude "$@"
+  fi
+}
+```
+
 ## Primeiros passos
 
 1. Em **Workspace**, informe o caminho do repositório em que os agentes vão trabalhar. Um workspace por vez.
