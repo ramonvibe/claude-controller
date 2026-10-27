@@ -11,6 +11,7 @@ import { Providers } from './Providers.tsx';
 import { Connectors } from './Connectors.tsx';
 import { DefaultSkills, type SkillInfo } from './Skills.tsx';
 import { Preflight } from './Preflight.tsx';
+import { Economy } from './Economy.tsx';
 
 type Snapshot = {
   agents: any[];
@@ -21,7 +22,7 @@ type Snapshot = {
   live: any;
   rateLimit: any;
 };
-type View = 'main' | 'config' | 'providers' | 'diag';
+type View = 'main' | 'config' | 'economy' | 'providers' | 'diag';
 
 const NEW_AGENT = { name: 'Novo agente', provider: 'claude-cli', model: 'haiku', role: 'coder' };
 
@@ -119,9 +120,9 @@ export function App() {
   const freeConnected = snap.providers.some((p) => p.external);
   const nav = (
     <nav className="nav">
-      {(['main', 'config', 'providers', 'diag'] as View[]).map((v) => (
+      {(['main', 'config', 'economy', 'providers', 'diag'] as View[]).map((v) => (
         <button key={v} className={`link ${view === v ? 'on' : ''}`} onClick={() => setView(v)}>
-          {{ main: 'Início', config: 'Configurar', providers: 'Provedores', diag: 'Diagnóstico' }[v]}
+          {{ main: 'Início', config: 'Configurar', economy: 'Economia', providers: 'Provedores', diag: 'Diagnóstico' }[v]}
         </button>
       ))}
     </nav>
@@ -139,7 +140,9 @@ export function App() {
       </header>
       {err && <p className="err" role="alert">{err}</p>}
 
-      {view === 'config' ? (
+      {view === 'economy' ? (
+        <Economy />
+      ) : view === 'config' ? (
         <>
           <section className="panel settings" aria-label="Workspace">
             <label>

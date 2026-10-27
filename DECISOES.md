@@ -13,7 +13,7 @@ Registro de fatos verificados e desvios em relação ao PLANO.md. Cada fixture c
 5. **Um workspace por vez.** As tarefas rodam em sequência; o paralelo fica atrás de uma opção desligada.
 6. **Agentes enxutos por padrão** (`inheritUserConfig: false`), com um toggle por card.
 7. **Modo padrão:** pipeline. O modo agente (MCP `orq`) é opcional.
-8. **Sem bench e sem página "Economia".** A coleta de tokens por agente continua.
+8. **Sem bench e sem página "Economia".** A coleta de tokens por agente continua. *Revisto em 2026-10-27: o usuário pediu a página Economia (tokens por IA e saldo disponível). Bench continua fora.*
 9. **Uso pessoal.** A instalação é `npm i && npm start`, sem publicação no npm.
 10. **Sonnet** entra no seletor de modelo, sem papel padrão.
 

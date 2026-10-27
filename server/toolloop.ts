@@ -153,11 +153,14 @@ export type LoopOpts = {
   extraBody?: object;
   retryDelayMs?: number;
   free?: boolean; // known-free model: cost 0 instead of "sem preço"
+  onLimits?: (h: Record<string, string>) => void; // x-ratelimit-* headers of each response
 };
 
 async function post(o: LoopOpts, body: object): Promise<any> {
   for (let attempt = 0; ; attempt++) {
     const r = await fetch(o.url, { method: 'POST', headers: { 'content-type': 'application/json', ...o.headers }, body: JSON.stringify(body), signal: o.signal });
+    const limits = Object.fromEntries([...r.headers].filter(([k]) => k.startsWith('x-ratelimit-')));
+    if (Object.keys(limits).length) o.onLimits?.(limits);
     if (r.ok) return r.json();
     const text = (await r.text()).slice(0, 400);
     if ((r.status === 429 || r.status >= 500) && attempt < 3) {

@@ -140,6 +140,12 @@ No modo agente, cada nível vira uma ferramenta do MCP orq. Os nomes são estes:
 
 - **Antes de rodar**, o app confere se as IAs escolhidas estão conectadas. Se alguma não estiver, ele pergunta antes de usar outra; nunca cai no Claude sem avisar.
 - **Linha do tempo:** em cada pedido aparece a cota de 5h antes e depois, os tokens do Opus e quanto foi feito fora do Claude. Cada tarefa mostra quem fez, a categoria, o que recebeu, as ferramentas usadas, os arquivos alterados, o diff e os tokens (novos · cache · saída).
+- **Economia:** tokens de cada IA no período (24h, 7 dias, 30 dias ou tudo), quanto ficou fora do Claude e o custo de lista. Em "Disponível", aparecem:
+  - a cota do Claude (% usada em 5h e 7 dias);
+  - o saldo do OpenRouter e da DeepSeek API (com chave);
+  - os limites `x-ratelimit-*` da última resposta de cada provedor.
+
+  O DeepSeek pelo `dsh` não informa saldo.
 - **Em Configurar:**
   - **Mapa do repositório:** um modelo grátis resume o projeto e o Opus planeja lendo esse resumo.
   - **Revisão por categoria.**

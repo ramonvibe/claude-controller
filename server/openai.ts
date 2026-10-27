@@ -39,6 +39,29 @@ const headers = (p: ProviderConfig) => {
   return h;
 };
 
+/** Last x-ratelimit-* headers seen per provider (in memory: they go stale within minutes anyway). */
+export const lastLimits = new Map<string, { at: number; headers: Record<string, string> }>();
+
+/** Balance from providers that expose one; null when the provider has no such endpoint or no key is set. */
+export async function balance(p: ProviderConfig): Promise<{ text: string } | null> {
+  if (!getKey(p.keyEnv)) return null;
+  const get = async (url: string) => {
+    const r = await fetch(url, { headers: headers(p), signal: AbortSignal.timeout(10000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  };
+  if (p.catalog === 'openrouter') {
+    const d = (await get(p.baseUrl.replace(/\/+$/, '') + '/key')).data ?? {};
+    const left = d.limit_remaining == null ? 'sem limite de crédito na chave' : `limite da chave: US$ ${Number(d.limit_remaining).toFixed(2)} restantes`;
+    return { text: `${left} · usado US$ ${Number(d.usage ?? 0).toFixed(2)}${d.is_free_tier ? ' · conta grátis (modelos :free têm limite diário de pedidos)' : ''}` };
+  }
+  if (p.catalog === 'deepseek-api') {
+    const d = await get('https://api.deepseek.com/user/balance');
+    return { text: (d.balance_infos ?? []).map((b: any) => `${b.total_balance} ${b.currency}`).join(' · ') || (d.is_available ? 'disponível' : 'sem saldo') };
+  }
+  return null;
+}
+
 export function makeOpenAIAdapter(p: ProviderConfig): Adapter {
   const tier = CATALOG.find((c) => c.id === p.catalog)?.tier ?? 'paga';
   return {
@@ -75,6 +98,7 @@ export function makeOpenAIAdapter(p: ProviderConfig): Adapter {
         signal: timeout,
         free: p.models.find((m) => m.id === i.agent.model)?.free,
         extraBody: p.catalog === 'openrouter' ? { usage: { include: true } } : undefined,
+        onLimits: (h) => lastLimits.set(p.id, { at: Date.now(), headers: h }),
       });
     },
   };

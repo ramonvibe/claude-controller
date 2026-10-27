@@ -215,3 +215,14 @@ details.routing summary h2 { display: inline; }
 .answer ul { margin: 6px 0 0; padding-left: 0; list-style: none; }
 .answer li { margin: 4px 0; white-space: pre-wrap; }
 .answer .st { display: inline-block; width: 1.2em; }
+
+.economy { display: grid; gap: 12px; }
+.eco-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.seg { display: flex; gap: 4px; }
+.seg button.on { border-color: var(--accent); color: var(--accent); }
+.table-wrap { overflow-x: auto; }
+.eco-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.eco-table th, .eco-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.eco-table tr.opus { color: var(--accent); font-weight: 600; }
+.avail { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; font-size: 13px; }
+.economy .kpis { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }

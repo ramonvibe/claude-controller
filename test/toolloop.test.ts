@@ -12,11 +12,12 @@ async function fakeApi(steps: any[]) {
   const server = createServer(async (req, res) => {
     let body = '';
     for await (const c of req) body += c;
+    if (req.url?.endsWith('/key')) return res.writeHead(200).end(JSON.stringify({ data: { limit_remaining: 4.5, usage: 0.5, is_free_tier: true } }));
     if (req.url?.endsWith('/models')) return res.writeHead(200).end(JSON.stringify({ data: [{ id: 'm-free:free' }, { id: 'm-paid', pricing: { prompt: '0.1', completion: '0.2' } }] }));
     requests.push({ auth: req.headers.authorization, ...JSON.parse(body) });
     const step = steps[i++];
     if (step === 429) return res.writeHead(429, { 'retry-after': '0.01' }).end('slow down');
-    res.writeHead(200, { 'content-type': 'application/json' }).end(
+    res.writeHead(200, { 'content-type': 'application/json', 'x-ratelimit-remaining-requests': '42' }).end(
       JSON.stringify({ model: 'm-free:free', usage: { prompt_tokens: 100, completion_tokens: 10, prompt_tokens_details: { cached_tokens: 40 } }, choices: [{ message: step }] }),
     );
   });
@@ -82,6 +83,15 @@ test('tool loop: workspace-only tools, secrets/.git/commands denied, edits appli
     const usage = evs.filter((e) => e.kind === 'usage');
     assert.equal(usage.length, 3);
     assert.deepEqual([usage[0].payload.input, usage[0].payload.cacheRead, usage[0].payload.costUsd], [60, 40, 0]);
+
+    // Economia: the free model counts as outside Claude; balance and last rate-limit headers are reported.
+    const eco = await app.api('GET', '/api/economy');
+    const m = eco.models.find((x: any) => x.model === 'm-free:free');
+    assert.deepEqual([m.outside, m.calls, m.novos, m.cache, m.saida, m.agents], [true, 3, 180, 120, 30, ['Grátis']]);
+    assert.equal(eco.totals.outsideTokens, 330);
+    const av = (await app.api('GET', '/api/economy/available')).find((x: any) => x.id === p.id);
+    assert.match(av.balance.text, /US\$ 4\.50 restantes/);
+    assert.equal(av.limits.headers['x-ratelimit-remaining-requests'], '42');
   } finally {
     api.close();
     await app.app.close();
