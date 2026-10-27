@@ -27,17 +27,13 @@ npm start
 
 Abra **http://127.0.0.1:7777**. O servidor escuta só em `127.0.0.1` e gera um token novo a cada início.
 
-Para iniciar com `claude --app` de qualquer pasta, adicione ao `~/.bashrc` (troque o caminho pelo seu). Qualquer outro uso de `claude` continua indo para o Claude Code:
+Para ter o comando `claude-app`, que funciona em qualquer terminal e qualquer pasta, rode uma vez dentro do clone:
 
 ```bash
-claude() {
-  if [ "$1" = "--app" ]; then
-    (cd /caminho/para/claude-controller && npm start)
-  else
-    command claude "$@"
-  fi
-}
+npm link
 ```
+
+Depois, basta digitar `claude-app`. Ele gera a página e sobe o servidor, como o `npm start`. Use `npm link` e não `npm i -g`: o Node não roda arquivos `.ts` copiados para dentro de `node_modules`. Para remover o comando, rode `npm unlink -g claude-controller`.
 
 ## Primeiros passos
 
