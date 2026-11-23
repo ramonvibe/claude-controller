@@ -1,5 +1,8 @@
 # Claude Controller
 
+> [!WARNING]
+> **Projeto descontinuado.** Não recebe mais manutenção. A ideia continua no novo projeto, o [Claude-Palace](https://github.com/ramonvibe/Claude-Palace).
+
 App web local que reparte um pedido de desenvolvimento entre vários modelos para poupar a cota do Claude:
 
 - O **Opus** planeja e escreve especificações curtas (handoffs).
